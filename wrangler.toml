@@ -11,7 +11,7 @@ routes = [
 [[d1_databases]]
 binding = "USAGE_DB"
 database_name = "leaf-usage"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "ebccb94a-5546-4736-b671-09818d1df5ec"
 migrations_dir = "migrations"
 
 # Keyed on cf-connecting-ip inside the binding only; the address is never stored.

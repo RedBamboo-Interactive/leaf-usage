@@ -11,7 +11,8 @@
     "check-schemas": "node scripts/sync-schemas.mjs --check",
     "deploy": "wrangler deploy",
     "migrate:local": "wrangler d1 migrations apply leaf-usage --local",
-    "migrate:remote": "wrangler d1 migrations apply leaf-usage --remote"
+    "migrate:remote": "wrangler d1 migrations apply leaf-usage --remote",
+    "probe": "node scripts/probe.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.7",

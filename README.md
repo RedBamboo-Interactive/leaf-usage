@@ -126,36 +126,37 @@ rule. `test/node` covers the pure validator and the schema conformance.
 
 ## Provisioning and deploy
 
-Not done yet; Nova reviews first. In order:
+Provisioned and deployed on 2026-10-24. The steps, for reference or a rebuild:
 
 ```powershell
 npm install
 npm test
 npx wrangler d1 create leaf-usage --jurisdiction eu
 .\scripts\provision.ps1 -DatabaseId <D1 id>
+# USAGE_ADMIN_API_KEY: 32 random bytes, base64url, piped over stdin and kept in the gitignored .dev.vars
 npx wrangler secret put USAGE_ADMIN_API_KEY
 npm run migrate:remote
 npm run deploy
+npm run probe
 ```
 
 The Worker owns the custom domain `usage.minititine.cc` (`workers_dev` and preview URLs are off).
 The admin key is entered once in the Insights extension settings on Laurent's installation and in
-Release Manager. After deploying, run the Phase 1 exit probe (throwaway story and subject, delete,
-verify through the admin API that nothing remains).
+Release Manager.
+
+`npm run probe` (`scripts/probe.mjs`) is the Phase 1 exit probe. It reads the admin key from
+`.dev.vars` without printing it, activates the throwaway story `probe-check` v1, registers a
+throwaway subject, uploads yesterday's snapshot (`accepted`, then `duplicate`), deletes the subject,
+checks the receipt, the erasure through the admin API and the `410` on re-registration, then removes
+the story row and tombstone with `wrangler d1 execute --remote` and shows the public catalogue.
 
 ## Data location
 
-Wrangler 4.152 `d1 create` offers:
+- D1 database `leaf-usage`, id `ebccb94a-5546-4736-b671-09818d1df5ec`, on Laurent's Cloudflare account.
+- Created on 2026-10-24 (13:33:50 UTC) with `--jurisdiction eu`. `wrangler d1 info leaf-usage`
+  reports `"jurisdiction": "eu"`, `"running_in_region": "EEUR"`, read replication disabled.
 
-- `--jurisdiction eu`: the database runs and stores data only inside the EU. It overrides any
-  location hint and cannot be changed after creation.
-- `--location weur|eeur`: a placement hint only, with no guarantee.
-
-Planned: `--jurisdiction eu`. To fill at provisioning:
-
-- D1 database id: _TBD_
-- Jurisdiction / location actually applied: _TBD_ (confirm in the dashboard or `wrangler d1 info leaf-usage`)
-- Date provisioned: _TBD_
-
-The Worker code itself runs at the Cloudflare edge closest to each caller; the jurisdiction governs
-where the D1 data is stored and processed.
+The EU jurisdiction keeps the database's execution and storage inside the European Union and cannot
+be changed after creation. Wrangler 4.152 also offers a `--location` hint, which gives no guarantee
+and is ignored when a jurisdiction is set. The Worker code itself runs at the Cloudflare edge closest
+to each caller; the jurisdiction governs where the D1 data is stored and processed.
