@@ -1,0 +1,515 @@
+{
+  "description": "Fixtures shared by the validator and the copied RedLeaf schemas. layer=schema: the static JSON schema must reject too. layer=story: only the definition-driven validator can reject (enum membership, bounds against the stored story, period window).",
+  "now": "2026-10-25T12:00:00.000Z",
+  "referenceStory": {
+    "schemaVersion": 1,
+    "storyId": "ai-harness",
+    "version": 1,
+    "status": "active",
+    "question": "Laurent wants to know which AI harness you use for sessions (Claude Code, Codex, OpenCode) and how often.",
+    "shares": "Per day: number of AI sessions you started or that an agent started for you, by harness.",
+    "period": "day",
+    "backfillDays": 30,
+    "dimensions": [
+      {
+        "key": "harness",
+        "values": [
+          "claude-code",
+          "codex",
+          "opencode",
+          "other"
+        ]
+      },
+      {
+        "key": "initiator",
+        "values": [
+          "you",
+          "agent"
+        ]
+      }
+    ],
+    "measures": [
+      {
+        "key": "sessions",
+        "type": "count",
+        "max": 10000
+      },
+      {
+        "key": "messages",
+        "type": "count",
+        "max": 1000000
+      }
+    ],
+    "clientObservations": [],
+    "introducedIn": "0.1.40"
+  },
+  "stories": [
+    {
+      "name": "reference story",
+      "valid": true,
+      "value": "$referenceStory"
+    },
+    {
+      "name": "theme story with a client observation and no backfill",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "storyId": "appearance-theme",
+        "version": 1,
+        "status": "active",
+        "question": "Do you use Leaf in dark or light mode?",
+        "shares": "Per day: number of browsers by theme setting, resolved mode and contrast.",
+        "period": "day",
+        "backfillDays": 0,
+        "dimensions": [
+          {
+            "key": "setting",
+            "values": [
+              "system",
+              "light",
+              "dark"
+            ]
+          },
+          {
+            "key": "resolved",
+            "values": [
+              "light",
+              "dark"
+            ]
+          },
+          {
+            "key": "contrast",
+            "values": [
+              "normal",
+              "high",
+              "other"
+            ]
+          }
+        ],
+        "measures": [
+          {
+            "key": "clients",
+            "type": "count",
+            "max": 100
+          }
+        ],
+        "clientObservations": [
+          "theme"
+        ],
+        "introducedIn": "0.1.40"
+      }
+    },
+    {
+      "name": "unknown top-level key",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "owner": "laurent"
+      }
+    },
+    {
+      "name": "missing measures",
+      "valid": false,
+      "layer": "schema",
+      "omit": [
+        "measures"
+      ]
+    },
+    {
+      "name": "string version",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "version": "1"
+      }
+    },
+    {
+      "name": "string measure type",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "measures": [
+          {
+            "key": "name",
+            "type": "string",
+            "max": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown key inside a measure",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "measures": [
+          {
+            "key": "sessions",
+            "type": "count",
+            "max": 1,
+            "unit": "x"
+          }
+        ]
+      }
+    },
+    {
+      "name": "backfill over 30 days",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "backfillDays": 31
+      }
+    },
+    {
+      "name": "repeated enum value",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "harness",
+            "values": [
+              "codex",
+              "codex"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing status",
+      "valid": false,
+      "layer": "schema",
+      "omit": [
+        "status"
+      ]
+    },
+    {
+      "name": "missing schemaVersion",
+      "valid": false,
+      "layer": "schema",
+      "omit": [
+        "schemaVersion"
+      ]
+    },
+    {
+      "name": "schema version 2",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "schemaVersion": 2
+      }
+    },
+    {
+      "name": "snake_case enum value",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "harness",
+            "values": [
+              "claude_code"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown client observation",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "clientObservations": [
+          "screen-size"
+        ]
+      }
+    },
+    {
+      "name": "blank question",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "question": "   "
+      }
+    },
+    {
+      "name": "leading-zero release version",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "introducedIn": "0.01.40"
+      }
+    },
+    {
+      "name": "deprecated status is schema-valid",
+      "valid": true,
+      "patch": {
+        "status": "deprecated"
+      }
+    },
+    {
+      "name": "measure key reused as a dimension key",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "measures": [
+          {
+            "key": "harness",
+            "type": "count",
+            "max": 1
+          }
+        ]
+      }
+    }
+  ],
+  "snapshots": [
+    {
+      "name": "two rows",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "snapshotId": "6f1f9a52-5b0e-4c3a-9d55-0d6f3c1b2a10",
+        "storyId": "ai-harness",
+        "storyVersion": 1,
+        "period": "2026-10-24",
+        "rows": [
+          {
+            "dims": {
+              "harness": "codex",
+              "initiator": "you"
+            },
+            "sessions": 3,
+            "messages": 41
+          },
+          {
+            "dims": {
+              "harness": "claude-code",
+              "initiator": "agent"
+            },
+            "sessions": 1,
+            "messages": 12
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty day",
+      "valid": true,
+      "patch": {
+        "rows": []
+      }
+    },
+    {
+      "name": "unknown top-level key",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "hostname": "juju-pc"
+      }
+    },
+    {
+      "name": "missing period",
+      "valid": false,
+      "layer": "schema",
+      "omit": [
+        "period"
+      ]
+    },
+    {
+      "name": "schema version 2",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "schemaVersion": 2
+      }
+    },
+    {
+      "name": "string story version",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "storyVersion": "1"
+      }
+    },
+    {
+      "name": "rows not an array",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": {}
+      }
+    },
+    {
+      "name": "row without dims",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "sessions": 1,
+            "messages": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "enum smuggling",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "harness": "my-private-repo",
+              "initiator": "you"
+            },
+            "sessions": 1,
+            "messages": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "float measure",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "harness": "codex",
+              "initiator": "you"
+            },
+            "sessions": 1.5,
+            "messages": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "measure over max",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "harness": "codex",
+              "initiator": "you"
+            },
+            "sessions": 10001,
+            "messages": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown row key",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "harness": "codex",
+              "initiator": "you"
+            },
+            "sessions": 1,
+            "messages": 1,
+            "tokens": 9
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate dimension combination",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "harness": "codex",
+              "initiator": "you"
+            },
+            "sessions": 1,
+            "messages": 1
+          },
+          {
+            "dims": {
+              "harness": "codex",
+              "initiator": "you"
+            },
+            "sessions": 2,
+            "messages": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "future period",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "period": "2026-10-26"
+      }
+    },
+    {
+      "name": "period older than backfill + 7 days",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "period": "2026-09-17"
+      }
+    },
+    {
+      "name": "impossible date",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "period": "2026-02-30"
+      }
+    },
+    {
+      "name": "upper-case snapshot id",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "snapshotId": "6F1F9A52-5B0E-4C3A-9D55-0D6F3C1B2A10"
+      }
+    },
+    {
+      "name": "row with dims only",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "harness": "codex",
+              "initiator": "you"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "all-zero row",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "harness": "codex",
+              "initiator": "you"
+            },
+            "sessions": 0,
+            "messages": 0
+          }
+        ]
+      }
+    }
+  ]
+}

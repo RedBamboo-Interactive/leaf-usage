@@ -1,0 +1,27 @@
+{
+  "name": "leaf-usage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit && tsc -p test/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "sync-schemas": "node scripts/sync-schemas.mjs",
+    "check-schemas": "node scripts/sync-schemas.mjs --check",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply leaf-usage --local",
+    "migrate:remote": "wrangler d1 migrations apply leaf-usage --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.7",
+    "@cloudflare/workers-types": "^5.20261024.1",
+    "@types/node": "^24.19.2",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.152.0"
+  }
+}
