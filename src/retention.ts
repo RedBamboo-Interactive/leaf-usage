@@ -1,5 +1,5 @@
 import { sumRows, type SnapshotRow } from "./contracts.js"
-import { eraseSubject, parseDefinition, type Env, type StoryRow } from "./store.js"
+import { eraseSubject, type Env, type StoryRow } from "./store.js"
 
 const DAY_MS = 86_400_000
 
@@ -44,7 +44,6 @@ async function foldDeprecated(env: Env, now: Date, report: RetentionReport): Pro
   let budget: number = RETENTION.foldPeriodsPerRun
   for (const story of versions.results) {
     if (budget <= 0) return
-    const definition = parseDefinition(story)
     const periods = await env.USAGE_DB.prepare(`
       SELECT period, COUNT(*) AS subjects FROM snapshots
       WHERE story_id = ? AND story_version = ?
@@ -67,7 +66,7 @@ async function foldDeprecated(env: Env, now: Date, report: RetentionReport): Pro
         "SELECT subject_id, rows_json FROM snapshots WHERE story_id = ? AND story_version = ? AND period = ?",
       ).bind(story.story_id, story.version, period).all<{ subject_id: string; rows_json: string }>()
       const distinct = new Set(rows.results.map((row) => row.subject_id)).size
-      const totals = sumRows(rows.results.map((row) => JSON.parse(row.rows_json) as SnapshotRow[]), definition)
+      const totals = sumRows(rows.results.map((row) => JSON.parse(row.rows_json) as SnapshotRow[]))
       await env.USAGE_DB.batch([
         env.USAGE_DB.prepare(`
           INSERT INTO story_totals (story_id, story_version, period, rows_json, subject_count)

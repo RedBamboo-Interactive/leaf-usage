@@ -121,6 +121,7 @@ const cleanup = [
   `DELETE FROM subjects WHERE subject_id = '${subjectId}'`,
   `DELETE FROM story_totals WHERE story_id = '${STORY_ID}'`,
   `DELETE FROM stories WHERE story_id = '${STORY_ID}'`,
+  `DELETE FROM story_definitions_history WHERE story_id = '${STORY_ID}'`,
   `DELETE FROM tombstones WHERE subject_hash = '${tombstone}'`,
 ].join("; ")
 
@@ -135,6 +136,7 @@ wranglerRemote(cleanup)
 const [remaining] = wranglerRemote(`
   SELECT
     (SELECT COUNT(*) FROM stories WHERE story_id = '${STORY_ID}') AS probe_stories,
+    (SELECT COUNT(*) FROM story_definitions_history WHERE story_id = '${STORY_ID}') AS probe_history,
     (SELECT COUNT(*) FROM tombstones WHERE subject_hash = '${tombstone}') AS probe_tombstones,
     (SELECT COUNT(*) FROM subjects WHERE subject_id = '${subjectId}') AS probe_subjects,
     (SELECT COUNT(*) FROM snapshots WHERE story_id = '${STORY_ID}') AS probe_snapshots

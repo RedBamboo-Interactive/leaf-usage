@@ -94,6 +94,8 @@ export const MAX_DIMENSION_VALUES = 256
 export const MAX_MEASURES = 32
 export const MAX_ROWS = 2000
 export const MAX_STORY_VERSION = 10_000
+// Stories are edited in place; the wire version stays 1 forever.
+export const STORY_VERSION = 1
 
 const CLIENT_OBSERVATIONS: readonly string[] = ["theme"]
 const STORY_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -185,7 +187,8 @@ export function validateStoryDefinition(input: unknown): Result<SubmittedStory> 
   if (!has(input, STORY_KEYS)) return fail("The story definition is missing required fields.")
   if (input.schemaVersion !== 1) return fail("Unsupported story schema version.")
   if (!isStoryId(input.storyId)) return fail("storyId must be a kebab-case id of at most 64 characters.")
-  if (!integer(input.version, 1, MAX_STORY_VERSION)) return fail("version must be a positive integer.")
+  // A story is one thing, edited in place: the wire version never changes.
+  if (input.version !== STORY_VERSION) return fail(`version is fixed at ${STORY_VERSION}; edit the story in place instead.`)
   if (input.status !== "active" && input.status !== "deprecated") return fail("status must be \"active\" or \"deprecated\".")
   if (typeof input.question !== "string" || !NON_BLANK.test(input.question)
     || typeof input.shares !== "string" || !NON_BLANK.test(input.shares)) {
@@ -284,9 +287,11 @@ export function canonicalStoryJson(definition: StoryDefinition): string {
 }
 
 /**
- * A story version's identity: only the fields that decide what a snapshot may contain. The
- * wording (`question`, `shares`) and `introducedIn` are not part of it and may change in place.
- * Order counts: dimension order fixes the canonical row form, so any reordering is a new shape.
+ * A story's data shape: only the fields that decide what a snapshot may contain, without the
+ * wording (`question`, `shares`) or `introducedIn`. Its SHA-256 is the shape hash recorded on each
+ * snapshot and in the definition history, so an answer can be tied to the definition it was
+ * accepted under. Every value here is an ASCII id, number or enum, so RedLeaf's collector
+ * serializes the same bytes and computes the same hash. Order counts.
  */
 export function storyShapeJson(definition: StoryDefinition): string {
   return JSON.stringify({
@@ -408,25 +413,30 @@ function compareDims(left: Record<string, string>, right: Record<string, string>
   return 0
 }
 
-/** Sums canonical rows from many subjects into subject-free totals, one row per dimension combination. */
-export function sumRows(snapshots: SnapshotRow[][], story: StoryDefinition): SnapshotRow[] {
-  const dimensionKeys = story.dimensions.map((dimension) => dimension.key)
+/**
+ * Sums canonical rows from many subjects into subject-free totals, one row per dimension
+ * combination. Stories are edited in place, so one period may hold snapshots accepted under
+ * different shapes: rows are grouped by their own dims and every measure they carry is summed,
+ * never reinterpreted through the current definition.
+ */
+export function sumRows(snapshots: SnapshotRow[][]): SnapshotRow[] {
+  const dimsKey = (dims: Record<string, string>) => JSON.stringify(Object.entries(dims).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
   const totals = new Map<string, SnapshotRow>()
   for (const rows of snapshots) {
     for (const row of rows) {
-      const key = JSON.stringify(dimensionKeys.map((dimension) => row.dims[dimension]))
+      const key = dimsKey(row.dims)
       let total = totals.get(key)
       if (!total) {
         total = { dims: { ...row.dims } }
-        for (const measure of story.measures) total[measure.key] = 0
         totals.set(key, total)
       }
-      for (const measure of story.measures) {
-        total[measure.key] = (total[measure.key] as number) + ((row[measure.key] as number | undefined) ?? 0)
+      for (const [measure, value] of Object.entries(row)) {
+        if (measure === "dims") continue
+        total[measure] = ((total[measure] as number | undefined) ?? 0) + (value as number)
       }
     }
   }
-  return [...totals.values()].sort((left, right) => compareDims(left.dims, right.dims, dimensionKeys))
+  return [...totals.entries()].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)).map(([, row]) => row)
 }
 
 // ---------------------------------------------------------------------------------------------

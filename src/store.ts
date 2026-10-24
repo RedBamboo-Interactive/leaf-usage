@@ -1,4 +1,4 @@
-import type { StoryDefinition } from "./contracts.js"
+import { storyShapeJson, type StoryDefinition } from "./contracts.js"
 
 export interface RateLimiterBinding {
   limit(options: { key: string }): Promise<{ success: boolean }>
@@ -53,6 +53,11 @@ export async function secureEquals(left: string, right: string): Promise<boolean
   let difference = 0
   for (let index = 0; index < aa.length; index++) difference |= aa[index] ^ bb[index]
   return difference === 0
+}
+
+/** SHA-256 of the story's data shape (see storyShapeJson). */
+export function shapeHash(definition: StoryDefinition): Promise<string> {
+  return sha256Hex(storyShapeJson(definition))
 }
 
 /** Tombstones store a hash of the subject id, never the id itself. */

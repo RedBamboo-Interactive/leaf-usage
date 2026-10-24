@@ -4,7 +4,6 @@ import {
   isUuid,
   parseUtcDay,
   publishedStory,
-  storyShapeJson,
   validateBatch,
   validateRegistration,
   validateSnapshot,
@@ -20,6 +19,7 @@ import {
   parseDefinition,
   secureEquals,
   sha256Hex,
+  shapeHash,
   tombstoneFor,
   type Env,
   type RateLimiterBinding,
@@ -228,9 +228,9 @@ async function uploadSnapshots(request: Request, env: Env): Promise<Response> {
 
   const now = new Date()
   const receivedAt = now.toISOString()
-  const stories = new Map<string, StoryDefinition | null>()
+  const stories = new Map<string, { definition: StoryDefinition; shapeHash: string } | null>()
   const results: ItemResult[] = []
-  const pending: { result: ItemResult; storyId: string; version: number; period: string; rowsJson: string }[] = []
+  const pending: { result: ItemResult; storyId: string; version: number; period: string; rowsJson: string; shapeHash: string }[] = []
 
   for (const [index, item] of batch.value.snapshots.entries()) {
     const envelope = validateSnapshotEnvelope(item)
@@ -248,7 +248,8 @@ async function uploadSnapshots(request: Request, env: Env): Promise<Response> {
       const row = await env.USAGE_DB.prepare(
         "SELECT * FROM stories WHERE story_id = ? AND version = ? AND status = 'active'",
       ).bind(storyId, storyVersion).first<StoryRow>()
-      stories.set(storyKey, row ? parseDefinition(row) : null)
+      const definition = row ? parseDefinition(row) : null
+      stories.set(storyKey, definition ? { definition, shapeHash: await shapeHash(definition) } : null)
     }
     const story = stories.get(storyKey)
     if (!story) {
@@ -256,23 +257,26 @@ async function uploadSnapshots(request: Request, env: Env): Promise<Response> {
       continue
     }
 
-    const validation = validateSnapshot(item, story, now)
+    const validation = validateSnapshot(item, story.definition, now)
     if (!validation.ok) {
       results.push({ index, snapshotId, status: "invalid", message: validation.message })
       continue
     }
     const result: ItemResult = { index, snapshotId, status: "accepted" }
     results.push(result)
-    pending.push({ result, storyId, version: storyVersion, period: validation.value.period, rowsJson: JSON.stringify(validation.value.rows) })
+    pending.push({
+      result, storyId, version: storyVersion, period: validation.value.period,
+      rowsJson: JSON.stringify(validation.value.rows), shapeHash: story.shapeHash,
+    })
   }
 
   if (pending.length > 0) {
     const subjectId = auth.subject.subject_id
     const inserts = await env.USAGE_DB.batch(pending.map((item) => env.USAGE_DB.prepare(`
-      INSERT INTO snapshots (subject_id, story_id, story_version, period, rows_json, received_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO snapshots (subject_id, story_id, story_version, period, rows_json, received_at, shape_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (subject_id, story_id, story_version, period) DO NOTHING
-    `).bind(subjectId, item.storyId, item.version, item.period, item.rowsJson, receivedAt)))
+    `).bind(subjectId, item.storyId, item.version, item.period, item.rowsJson, receivedAt, item.shapeHash)))
 
     let accepted = 0
     for (const [position, item] of pending.entries()) {
@@ -327,29 +331,44 @@ async function activateStory(request: Request, env: Env, storyId: string, versio
     return error("invalid_story", "The definition's storyId and version must match the path.", 400)
   }
 
-  // A version's identity is its data shape (storyShapeJson). The same shape with new wording
-  // replaces the stored wording in place; a different shape needs a new version. Status is never
-  // touched here, so a deprecated version is never revived.
+  // A story is one thing, edited in place: any different definition (wording or data shape)
+  // replaces the stored one and the previous definition is kept in story_definitions_history.
+  // Uploads are always validated against the current definition. Status is never touched here,
+  // so a deprecated story is never revived.
   const canonical = canonicalStoryJson(definition)
-  const shape = storyShapeJson(definition)
   const select = env.USAGE_DB.prepare("SELECT * FROM stories WHERE story_id = ? AND version = ?").bind(storyId, version)
 
   const reconcile = async (row: StoryRow): Promise<Response> => {
     for (let attempt = 0; attempt < 3; attempt++) {
       if (row.definition_json === canonical) return json({ result: "unchanged", story: catalogueEntry(row) })
-      if (storyShapeJson(parseDefinition(row)) !== shape) {
-        return error("story_version_conflict", "The data shape changed without a version bump.", 409)
-      }
-      // Compare-and-set on the stored bytes, so two concurrent wording updates cannot interleave.
-      const updated = await env.USAGE_DB.prepare(
-        "UPDATE stories SET definition_json = ? WHERE story_id = ? AND version = ? AND definition_json = ?",
-      ).bind(canonical, storyId, version, row.definition_json).run()
+      const previous = parseDefinition(row)
+      const previousShape = await shapeHash(previous)
+      const changedAt = new Date().toISOString()
+      // One transaction, both statements guarded on the stored bytes: the history row is written
+      // exactly when the update happens, and two concurrent edits cannot interleave.
+      const [, updated] = await env.USAGE_DB.batch([
+        env.USAGE_DB.prepare(`
+          INSERT INTO story_definitions_history (story_id, changed_at, definition_json, shape_hash)
+          SELECT story_id, ?, definition_json, ? FROM stories
+          WHERE story_id = ? AND version = ? AND definition_json = ?
+        `).bind(changedAt, previousShape, storyId, version, row.definition_json),
+        env.USAGE_DB.prepare(
+          "UPDATE stories SET definition_json = ? WHERE story_id = ? AND version = ? AND definition_json = ?",
+        ).bind(canonical, storyId, version, row.definition_json),
+      ])
       const current = await select.first<StoryRow>()
-      if (!current) throw new Error("story version disappeared during a wording update")
-      if ((updated.meta.changes ?? 0) === 1) return json({ result: "updated", story: catalogueEntry(current) })
+      if (!current) throw new Error("story disappeared during an update")
+      if ((updated.meta.changes ?? 0) === 1) {
+        return json({
+          result: "updated",
+          updatedAt: changedAt,
+          shapeChanged: previousShape !== await shapeHash(definition),
+          story: catalogueEntry(current),
+        })
+      }
       row = current
     }
-    throw new Error("story wording update kept racing")
+    throw new Error("story update kept racing")
   }
 
   const existing = await select.first<StoryRow>()
@@ -376,6 +395,32 @@ async function deprecateStory(env: Env, storyId: string, version: number): Promi
     .bind(storyId, version).first<StoryRow>()
   if (!row) return error("not_found", "Story version not found.", 404)
   return json({ story: catalogueEntry(row) })
+}
+
+/**
+ * Read-only record of a story's definitions: the current one and every one it replaced, newest
+ * first, each with its shape hash so stored snapshots can be matched to the definition they were
+ * accepted under.
+ */
+async function storyHistory(env: Env, storyId: string): Promise<Response> {
+  const current = await env.USAGE_DB.prepare("SELECT * FROM stories WHERE story_id = ? ORDER BY version DESC")
+    .bind(storyId).first<StoryRow>()
+  const previous = await env.USAGE_DB.prepare(`
+    SELECT changed_at, definition_json, shape_hash FROM story_definitions_history
+    WHERE story_id = ? ORDER BY changed_at DESC, id DESC
+  `).bind(storyId).all<{ changed_at: string; definition_json: string; shape_hash: string }>()
+  if (!current && previous.results.length === 0) return error("not_found", "Story not found.", 404)
+  return json({
+    storyId,
+    current: current
+      ? { ...catalogueEntry(current), shapeHash: await shapeHash(parseDefinition(current)) }
+      : null,
+    history: previous.results.map((row) => ({
+      changedAt: row.changed_at,
+      shapeHash: row.shape_hash,
+      definition: JSON.parse(row.definition_json),
+    })),
+  })
 }
 
 async function listSubjects(env: Env): Promise<Response> {
@@ -423,12 +468,13 @@ async function querySnapshots(env: Env, url: URL): Promise<Response> {
     query.values.push(subject.toLowerCase())
   }
   const rows = await env.USAGE_DB.prepare(`
-    SELECT subject_id, story_id, story_version, period, rows_json, received_at FROM snapshots
+    SELECT subject_id, story_id, story_version, period, rows_json, received_at, shape_hash FROM snapshots
     WHERE ${query.clauses.join(" AND ")}
     ORDER BY period, story_version, subject_id
     LIMIT ?
   `).bind(...query.values, ADMIN_SNAPSHOT_LIMIT + 1).all<{
     subject_id: string; story_id: string; story_version: number; period: string; rows_json: string; received_at: string
+    shape_hash: string | null
   }>()
   const snapshots = rows.results.slice(0, ADMIN_SNAPSHOT_LIMIT).map((row) => ({
     subjectId: row.subject_id,
@@ -437,6 +483,7 @@ async function querySnapshots(env: Env, url: URL): Promise<Response> {
     period: row.period,
     rows: JSON.parse(row.rows_json),
     receivedAt: row.received_at,
+    shapeHash: row.shape_hash,
   }))
   return json({ snapshots, truncated: rows.results.length > ADMIN_SNAPSHOT_LIMIT })
 }
@@ -465,6 +512,12 @@ async function queryTotals(env: Env, url: URL): Promise<Response> {
 async function admin(request: Request, env: Env, url: URL): Promise<Response> {
   if (!await adminAuthorized(request, env)) return error("unauthorized", "A valid admin key is required.", 401)
   const path = url.pathname
+
+  const history = path.match(/^\/v1\/admin\/stories\/([^/]+)\/history$/)
+  if (history) {
+    if (!isStoryId(history[1])) return error("not_found", "Story not found.", 404)
+    return request.method === "GET" ? storyHistory(env, history[1]) : error("method_not_allowed", "Method not allowed.", 405)
+  }
 
   const story = path.match(/^\/v1\/admin\/stories\/([^/]+)\/([^/]+)(\/deprecate)?$/)
   if (story) {

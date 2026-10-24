@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
 import {
   canonicalStoryJson,
   parseUtcDay,
+  storyShapeJson,
   sumRows,
   validateRegistration,
   validateSnapshot,
@@ -78,15 +80,44 @@ describe("dates", () => {
 
 describe("totals", () => {
   it("sums measures per dimension combination", () => {
-    const definition: StoryDefinition = { ...story }
     const rows = sumRows([
       [{ dims: { harness: "codex", initiator: "you" }, sessions: 1, messages: 2 }],
-      [{ dims: { harness: "codex", initiator: "you" }, sessions: 3, messages: 4 }, { dims: { harness: "other", initiator: "agent" }, sessions: 1, messages: 1 }],
-    ], definition)
+      [{ dims: { initiator: "you", harness: "codex" }, sessions: 3, messages: 4 }, { dims: { harness: "other", initiator: "agent" }, sessions: 1, messages: 1 }],
+    ])
     expect(rows).toEqual([
       { dims: { harness: "codex", initiator: "you" }, sessions: 4, messages: 6 },
       { dims: { harness: "other", initiator: "agent" }, sessions: 1, messages: 1 },
     ])
+  })
+
+  it("keeps rows accepted under different shapes apart instead of reinterpreting them", () => {
+    const rows = sumRows([
+      [{ dims: { harness: "codex", initiator: "you" }, sessions: 1, messages: 2 }],
+      [{ dims: { harness: "codex" }, sessions: 5 }],
+    ])
+    expect(rows).toEqual([
+      { dims: { harness: "codex", initiator: "you" }, sessions: 1, messages: 2 },
+      { dims: { harness: "codex" }, sessions: 5 },
+    ])
+  })
+})
+
+describe("shape hash", () => {
+  // The same golden value is asserted by RedLeaf's collector tests (UsageStoryShape), so both
+  // sides hash a definition identically.
+  it("is the SHA-256 of the canonical shape JSON, ignoring wording", async () => {
+    const shape = storyShapeJson(story)
+    expect(shape).toBe('{"schemaVersion":1,"storyId":"ai-harness","version":1,"period":"day","backfillDays":30,"dimensions":[{"key":"harness","values":["claude-code","codex","opencode","other"]},{"key":"initiator","values":["you","agent"]}],"measures":[{"key":"sessions","type":"count","max":10000},{"key":"messages","type":"count","max":1000000}],"clientObservations":[]}')
+    expect(createHash("sha256").update(shape).digest("hex")).toBe("0dd0eb8b1400abff30e123d6396b0620fa75d593a59ae51f6d38334a82b2fef5")
+    const reworded: StoryDefinition = { ...story, question: "Another question?", shares: "Something else.", introducedIn: "9.9.9" }
+    expect(storyShapeJson(reworded)).toBe(shape)
+    expect(storyShapeJson({ ...story, backfillDays: 7 })).not.toBe(shape)
+  })
+})
+
+describe("story version", () => {
+  it("is fixed at 1", () => {
+    expect(validateStoryDefinition({ ...referenceStory, version: 2 })).toEqual({ ok: false, message: "version is fixed at 1; edit the story in place instead." })
   })
 })
 

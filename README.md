@@ -62,36 +62,44 @@ The stored story definition drives validation (`src/contracts.ts`):
 
 | Route | Behaviour |
 |---|---|
-| `PUT /v1/admin/stories/{id}/{version}` | activate a definition (`usage-story.schema.json`); `201 activated`, `200 unchanged`, `200 updated` (wording only), `409` when the data shape differs (see below) |
-| `POST /v1/admin/stories/{id}/{version}/deprecate` | deprecate now; uploads become `story_inactive` |
+| `PUT /v1/admin/stories/{id}/1` | activate or edit a story (`usage-story.schema.json`); `201 activated`, `200 unchanged`, `200 updated` |
+| `GET /v1/admin/stories/{id}/history` | read-only: the current definition and every previous one, newest first, each with its shape hash |
+| `POST /v1/admin/stories/{id}/1/deprecate` | deprecate now; uploads become `story_inactive` |
 | `GET /v1/admin/subjects` | subject id, mode, label, created and last upload (max 1000, `truncated` flag) |
-| `GET /v1/admin/snapshots?storyId=&version=&from=&to=&subject=` | subject-level rows (max 5000, `truncated` flag) |
+| `GET /v1/admin/snapshots?storyId=&version=&from=&to=&subject=` | subject-level rows with their `shapeHash` (max 5000, `truncated` flag) |
 | `GET /v1/admin/totals?storyId=&version=&from=&to=` | subject-free aggregates kept after deprecation |
 
-A story version's identity is its **data shape**: `storyId`, `version`, `period`, `backfillDays`,
-`dimensions` (keys and values, in order), `measures` (keys, types and `max`, in order) and
-`clientObservations`. The wording (`question`, `shares`) and `introducedIn` are not part of it.
+A story is one thing, edited in place: its wire `version` is fixed at 1 (any other value is
+refused), and there are no version bumps. Re-activating an existing story:
 
-- New version: `201 activated`.
 - Identical definition: `200 unchanged`.
-- Same shape, different wording: the stored wording is replaced in place, `200 updated`. Snapshots,
-  status and `activatedAt` are untouched; the catalogue serves the new wording from then on.
-- Different shape on an existing version: `409 story_version_conflict`, "The data shape changed
-  without a version bump." Nothing is changed; the fix is a new version.
+- Any other definition, wording or data shape: the stored definition is replaced in place and the
+  previous one is appended to `story_definitions_history`. The answer is
+  `200 { result: "updated", updatedAt, shapeChanged, story }`; status and `activatedAt` are
+  untouched, and the catalogue serves the new definition from then on.
 
-A new version does not retire the old one: the Worker keeps accepting every version that is not
-deprecated, so testers who have not updated keep uploading. Only an explicit deprecation stops a
-version. The stored definition is a canonical serialization without `status` (lifecycle lives in the
-`stories.status` column). A deprecated version is never revived (its wording can still be updated),
-and a definition submitted as `deprecated` is accepted only when that version already exists. The
-catalogue returns each definition in schema shape with the live `status`.
+Uploads are always validated against the current definition, so a lagging installation's old-shape
+snapshots are rejected as `invalid`; RedLeaf's collector recalculates those days from local history
+once it has updated. The **shape hash** is the SHA-256 of the canonical data shape (`storyId`,
+`version`, `period`, `backfillDays`, `dimensions`, `measures`, `clientObservations`, in that order,
+without the wording; `storyShapeJson`). It is recorded on every accepted snapshot (`snapshots.shape_hash`,
+NULL for rows accepted before migration 0002) and on every history row, so each answer row can be tied
+to the definition it was accepted under. RedLeaf computes the same hash for its outbox rows. Nothing
+else depends on the history.
+
+The stored definition is a canonical serialization without `status` (lifecycle lives in the
+`stories.status` column). A deprecated story is never revived (it can still be edited), and a
+definition submitted as `deprecated` is accepted only when the story already exists. The catalogue
+returns each definition in schema shape with the live `status`. Retention folds a deprecated story's
+periods by each row's own dimensions, so periods spanning a shape change are summed without
+reinterpreting older rows.
 
 ## Retention (daily cron, 03:23 UTC)
 
 Each run does bounded work (`src/retention.ts`, `RETENTION`); leftovers are handled the next day.
 Stages run independently so one failure cannot block the erasures after it.
 
-- Deprecated story versions, 30 days after deprecation: each period with at least 5 distinct subjects
+- Deprecated stories, 30 days after deprecation: each period with at least 5 distinct subjects
   is summed into `story_totals` (dimension combination → summed measures, plus `subject_count`);
   periods with fewer subjects are dropped. All subject-level rows of the period are deleted in the
   same transaction.

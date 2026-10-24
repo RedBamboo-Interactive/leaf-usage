@@ -11,7 +11,6 @@ import {
   snapshot,
   storyDefinition,
   upload,
-  type Story,
 } from "./helpers"
 import { sha256Hex } from "../../src/store"
 import { formatUtcDay, utcDay } from "../../src/contracts"
@@ -445,6 +444,13 @@ describe("admin", () => {
     expect((await send("GET", "/v1/admin/subjects", undefined, subject.secret)).status).toBe(401)
   })
 
+  type History = {
+    storyId: string
+    current: { status: string; shapeHash: string; definition: Record<string, unknown> } | null
+    history: { changedAt: string; shapeHash: string; definition: Record<string, unknown> }[]
+  }
+  const historyOf = async (storyId: string) => (await admin("GET", `/v1/admin/stories/${storyId}/history`)).json() as Promise<History>
+
   it("activates a story and is idempotent for the identical definition", async () => {
     const definition = storyDefinition()
     const path = `/v1/admin/stories/${definition.storyId}/1`
@@ -455,9 +461,10 @@ describe("admin", () => {
     const same = await admin("PUT", path, { ...definition, status: "active" })
     expect(same.status).toBe(200)
     expect(await same.json()).toMatchObject({ result: "unchanged" })
+    expect((await historyOf(definition.storyId)).history).toEqual([])
   })
 
-  it("updates the wording of an existing version in place", async () => {
+  it("updates the wording in place and records the previous definition", async () => {
     const story = await activeStory()
     const path = `/v1/admin/stories/${story.storyId}/1`
     const subject = await registeredSubject()
@@ -466,9 +473,9 @@ describe("admin", () => {
     const reworded = { ...story, question: "Which harness runs your sessions?", shares: "Per day: sessions by harness and initiator.", introducedIn: "0.1.41" }
     const response = await admin("PUT", path, reworded)
     expect(response.status).toBe(200)
-    const body = await response.json() as { result: string; story: { status: string; activatedAt: string; definition: Record<string, unknown> } }
-    expect(body.result).toBe("updated")
-    expect(body.story.status).toBe("active")
+    const body = await response.json() as { result: string; updatedAt: string; shapeChanged: boolean; story: { status: string; definition: Record<string, unknown> } }
+    expect(body).toMatchObject({ result: "updated", shapeChanged: false, story: { status: "active" } })
+    expect(typeof body.updatedAt).toBe("string")
     expect(body.story.definition).toEqual(reworded)
 
     // The catalogue serves the current wording, and the same wording again is unchanged.
@@ -476,32 +483,70 @@ describe("admin", () => {
     expect(stories.find((entry) => entry.storyId === story.storyId)?.definition).toEqual(reworded)
     expect(await (await admin("PUT", path, reworded)).json()).toMatchObject({ result: "unchanged" })
 
+    // The previous definition is kept; a wording edit leaves the shape hash alone.
+    const record = await historyOf(story.storyId)
+    expect(record.history).toHaveLength(1)
+    expect(record.history[0]).toMatchObject({ changedAt: body.updatedAt, definition: { question: story.question } })
+    expect(record.history[0].definition).not.toHaveProperty("status")
+    expect(record.history[0].shapeHash).toBe(record.current!.shapeHash)
+
     // The data is untouched: earlier snapshots stay, and an identical retry is still a duplicate.
     const results = await upload(subject, [snapshot(story, day(2)), snapshot(story, day(1))])
     expect(results.map((result) => result.status)).toEqual(["duplicate", "accepted"])
   })
 
-  const shapeChanges: [string, (story: Story) => Record<string, unknown>][] = [
-    ["a widened enum", (story) => ({ ...story, dimensions: [{ key: "harness", values: ["claude-code", "codex", "opencode", "other", "cursor"] }, story.dimensions[1]] })],
-    ["reordered enum values", (story) => ({ ...story, dimensions: [{ key: "harness", values: ["codex", "claude-code", "opencode", "other"] }, story.dimensions[1]] })],
-    ["reordered dimensions", (story) => ({ ...story, dimensions: [story.dimensions[1], story.dimensions[0]] })],
-    ["a removed dimension", (story) => ({ ...story, dimensions: [story.dimensions[0]] })],
-    ["a new measure", (story) => ({ ...story, measures: [...story.measures, { key: "runs", type: "count", max: 10 }] })],
-    ["a measure max", (story) => ({ ...story, measures: [{ key: "sessions", type: "count", max: 20000 }, story.measures[1]] })],
-    ["a measure type", (story) => ({ ...story, measures: [{ key: "sessions", type: "seconds", max: 10000 }, story.measures[1]] })],
-    ["backfill days", (story) => ({ ...story, backfillDays: 7 })],
-    ["client observations", (story) => ({ ...story, clientObservations: ["theme"] })],
-  ]
-  it.each(shapeChanges)("refuses %s without a version bump and keeps the stored wording", async (_name, mutate) => {
+  it("edits the data shape in place; old-shape uploads are invalid and every answer keeps its shape hash", async () => {
     const story = await activeStory()
-    const response = await admin("PUT", `/v1/admin/stories/${story.storyId}/1`, { ...mutate(story), question: "New wording too?" })
-    expect(response.status).toBe(409)
-    expect(await response.json()).toMatchObject({ error: "story_version_conflict", message: "The data shape changed without a version bump." })
-    const row = await db().prepare("SELECT definition_json FROM stories WHERE story_id = ?").bind(story.storyId).first<{ definition_json: string }>()
-    expect(JSON.parse(row!.definition_json).question).toBe(story.question)
+    const path = `/v1/admin/stories/${story.storyId}/1`
+    const subject = await registeredSubject()
+    expect((await upload(subject, [snapshot(story, day(3))]))[0].status).toBe("accepted")
+
+    const reshaped = {
+      ...story,
+      dimensions: [{ key: "harness", values: ["claude-code", "codex", "opencode", "cursor", "other"] }, story.dimensions[1]],
+      measures: [story.measures[0]],
+    }
+    const response = await admin("PUT", path, reshaped)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ result: "updated", shapeChanged: true, story: { version: 1, definition: reshaped } })
+
+    // A lagging installation still sends the old shape: rejected, nothing stored.
+    const [old] = await upload(subject, [snapshot(story, day(2))])
+    expect(old.status).toBe("invalid")
+    // After it updates, the recalculated day fits the current shape.
+    const [fresh] = await upload(subject, [snapshot(story, day(2), [{ dims: { harness: "cursor", initiator: "you" }, sessions: 4 }])])
+    expect(fresh.status).toBe("accepted")
+
+    const record = await historyOf(story.storyId)
+    expect(record.history).toHaveLength(1)
+    expect(record.history[0].shapeHash).not.toBe(record.current!.shapeHash)
+
+    type Rows = { snapshots: { period: string; shapeHash: string }[] }
+    const { snapshots } = await (await admin("GET", `/v1/admin/snapshots?storyId=${story.storyId}`)).json() as Rows
+    expect(snapshots.map((row) => [row.period, row.shapeHash])).toEqual([
+      [day(3), record.history[0].shapeHash],
+      [day(2), record.current!.shapeHash],
+    ])
   })
 
-  it("updates wording on a deprecated version without reviving it", async () => {
+  it("keeps every previous definition, newest first", async () => {
+    const story = await activeStory()
+    const path = `/v1/admin/stories/${story.storyId}/1`
+    await admin("PUT", path, { ...story, question: "Second wording?" })
+    await admin("PUT", path, { ...story, question: "Third wording?", backfillDays: 7 })
+    const record = await historyOf(story.storyId)
+    expect(record.current?.definition).toMatchObject({ question: "Third wording?", backfillDays: 7 })
+    expect(record.history.map((entry) => entry.definition.question)).toEqual(["Second wording?", story.question])
+  })
+
+  it("answers 404 for the history of an unknown story and refuses writes to it", async () => {
+    expect((await admin("GET", "/v1/admin/stories/never-activated/history")).status).toBe(404)
+    const story = await activeStory()
+    expect((await admin("POST", `/v1/admin/stories/${story.storyId}/history`)).status).toBe(405)
+    expect((await call(`/v1/admin/stories/${story.storyId}/history`)).status).toBe(401)
+  })
+
+  it("updates a deprecated story in place without reviving it", async () => {
     const story = await activeStory()
     const path = `/v1/admin/stories/${story.storyId}/1`
     await admin("POST", `${path}/deprecate`)
@@ -510,16 +555,11 @@ describe("admin", () => {
     expect(await response.json()).toMatchObject({ result: "updated", story: { status: "deprecated", definition: { question: "Retired wording?", status: "deprecated" } } })
   })
 
-  it("keeps accepting an older version while a newer one is active", async () => {
-    const v1 = await activeStory()
-    const v2 = { ...v1, version: 2, measures: [v1.measures[0]] }
-    expect((await admin("PUT", `/v1/admin/stories/${v1.storyId}/2`, v2)).status).toBe(201)
-    const subject = await registeredSubject()
-    const results = await upload(subject, [
-      snapshot(v1, day(1)),
-      snapshot(v2, day(1), [{ dims: { harness: "codex", initiator: "you" }, sessions: 2 }]),
-    ])
-    expect(results.map((result) => result.status)).toEqual(["accepted", "accepted"])
+  it("refuses any story version other than 1", async () => {
+    const story = storyDefinition()
+    const response = await admin("PUT", `/v1/admin/stories/${story.storyId}/2`, { ...story, version: 2 })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ message: "version is fixed at 1; edit the story in place instead." })
   })
 
   it("never revives a deprecated version", async () => {
