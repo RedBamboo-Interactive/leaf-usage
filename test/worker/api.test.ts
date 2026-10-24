@@ -11,6 +11,7 @@ import {
   snapshot,
   storyDefinition,
   upload,
+  type Story,
 } from "./helpers"
 import { sha256Hex } from "../../src/store"
 import { formatUtcDay, utcDay } from "../../src/contracts"
@@ -444,24 +445,81 @@ describe("admin", () => {
     expect((await send("GET", "/v1/admin/subjects", undefined, subject.secret)).status).toBe(401)
   })
 
-  it("activates a story idempotently and refuses a changed definition for the same version", async () => {
+  it("activates a story and is idempotent for the identical definition", async () => {
     const definition = storyDefinition()
     const path = `/v1/admin/stories/${definition.storyId}/1`
     const first = await admin("PUT", path, definition)
     expect(first.status).toBe(201)
     expect(await first.json()).toMatchObject({ result: "activated" })
 
-    const same = await admin("PUT", path, definition)
+    const same = await admin("PUT", path, { ...definition, status: "active" })
     expect(same.status).toBe(200)
     expect(await same.json()).toMatchObject({ result: "unchanged" })
+  })
 
-    const changed = await admin("PUT", path, { ...definition, question: "A different question?" })
-    expect(changed.status).toBe(409)
-    const widened = await admin("PUT", path, {
-      ...definition,
-      dimensions: [{ key: "harness", values: ["claude-code", "codex", "opencode", "other", "cursor"] }, definition.dimensions[1]],
-    })
-    expect(widened.status).toBe(409)
+  it("updates the wording of an existing version in place", async () => {
+    const story = await activeStory()
+    const path = `/v1/admin/stories/${story.storyId}/1`
+    const subject = await registeredSubject()
+    expect((await upload(subject, [snapshot(story, day(2))]))[0].status).toBe("accepted")
+
+    const reworded = { ...story, question: "Which harness runs your sessions?", shares: "Per day: sessions by harness and initiator.", introducedIn: "0.1.41" }
+    const response = await admin("PUT", path, reworded)
+    expect(response.status).toBe(200)
+    const body = await response.json() as { result: string; story: { status: string; activatedAt: string; definition: Record<string, unknown> } }
+    expect(body.result).toBe("updated")
+    expect(body.story.status).toBe("active")
+    expect(body.story.definition).toEqual(reworded)
+
+    // The catalogue serves the current wording, and the same wording again is unchanged.
+    const { stories } = await (await call("/v1/catalogue")).json() as { stories: { storyId: string; definition: Record<string, unknown> }[] }
+    expect(stories.find((entry) => entry.storyId === story.storyId)?.definition).toEqual(reworded)
+    expect(await (await admin("PUT", path, reworded)).json()).toMatchObject({ result: "unchanged" })
+
+    // The data is untouched: earlier snapshots stay, and an identical retry is still a duplicate.
+    const results = await upload(subject, [snapshot(story, day(2)), snapshot(story, day(1))])
+    expect(results.map((result) => result.status)).toEqual(["duplicate", "accepted"])
+  })
+
+  const shapeChanges: [string, (story: Story) => Record<string, unknown>][] = [
+    ["a widened enum", (story) => ({ ...story, dimensions: [{ key: "harness", values: ["claude-code", "codex", "opencode", "other", "cursor"] }, story.dimensions[1]] })],
+    ["reordered enum values", (story) => ({ ...story, dimensions: [{ key: "harness", values: ["codex", "claude-code", "opencode", "other"] }, story.dimensions[1]] })],
+    ["reordered dimensions", (story) => ({ ...story, dimensions: [story.dimensions[1], story.dimensions[0]] })],
+    ["a removed dimension", (story) => ({ ...story, dimensions: [story.dimensions[0]] })],
+    ["a new measure", (story) => ({ ...story, measures: [...story.measures, { key: "runs", type: "count", max: 10 }] })],
+    ["a measure max", (story) => ({ ...story, measures: [{ key: "sessions", type: "count", max: 20000 }, story.measures[1]] })],
+    ["a measure type", (story) => ({ ...story, measures: [{ key: "sessions", type: "seconds", max: 10000 }, story.measures[1]] })],
+    ["backfill days", (story) => ({ ...story, backfillDays: 7 })],
+    ["client observations", (story) => ({ ...story, clientObservations: ["theme"] })],
+  ]
+  it.each(shapeChanges)("refuses %s without a version bump and keeps the stored wording", async (_name, mutate) => {
+    const story = await activeStory()
+    const response = await admin("PUT", `/v1/admin/stories/${story.storyId}/1`, { ...mutate(story), question: "New wording too?" })
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ error: "story_version_conflict", message: "The data shape changed without a version bump." })
+    const row = await db().prepare("SELECT definition_json FROM stories WHERE story_id = ?").bind(story.storyId).first<{ definition_json: string }>()
+    expect(JSON.parse(row!.definition_json).question).toBe(story.question)
+  })
+
+  it("updates wording on a deprecated version without reviving it", async () => {
+    const story = await activeStory()
+    const path = `/v1/admin/stories/${story.storyId}/1`
+    await admin("POST", `${path}/deprecate`)
+    const response = await admin("PUT", path, { ...story, status: "deprecated", question: "Retired wording?" })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ result: "updated", story: { status: "deprecated", definition: { question: "Retired wording?", status: "deprecated" } } })
+  })
+
+  it("keeps accepting an older version while a newer one is active", async () => {
+    const v1 = await activeStory()
+    const v2 = { ...v1, version: 2, measures: [v1.measures[0]] }
+    expect((await admin("PUT", `/v1/admin/stories/${v1.storyId}/2`, v2)).status).toBe(201)
+    const subject = await registeredSubject()
+    const results = await upload(subject, [
+      snapshot(v1, day(1)),
+      snapshot(v2, day(1), [{ dims: { harness: "codex", initiator: "you" }, sessions: 2 }]),
+    ])
+    expect(results.map((result) => result.status)).toEqual(["accepted", "accepted"])
   })
 
   it("never revives a deprecated version", async () => {

@@ -4,6 +4,7 @@ import {
   isUuid,
   parseUtcDay,
   publishedStory,
+  storyShapeJson,
   validateBatch,
   validateRegistration,
   validateSnapshot,
@@ -326,17 +327,33 @@ async function activateStory(request: Request, env: Env, storyId: string, versio
     return error("invalid_story", "The definition's storyId and version must match the path.", 400)
   }
 
-  // Story versions are immutable: re-activating is idempotent only for the identical definition
-  // (compared on the canonical serialization, which leaves out status) and never revives a
-  // deprecated version.
+  // A version's identity is its data shape (storyShapeJson). The same shape with new wording
+  // replaces the stored wording in place; a different shape needs a new version. Status is never
+  // touched here, so a deprecated version is never revived.
   const canonical = canonicalStoryJson(definition)
+  const shape = storyShapeJson(definition)
   const select = env.USAGE_DB.prepare("SELECT * FROM stories WHERE story_id = ? AND version = ?").bind(storyId, version)
-  const unchanged = (row: StoryRow) => row.definition_json === canonical
-    ? json({ result: "unchanged", story: catalogueEntry(row) })
-    : error("story_version_conflict", "This story version already exists with a different definition.", 409)
+
+  const reconcile = async (row: StoryRow): Promise<Response> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (row.definition_json === canonical) return json({ result: "unchanged", story: catalogueEntry(row) })
+      if (storyShapeJson(parseDefinition(row)) !== shape) {
+        return error("story_version_conflict", "The data shape changed without a version bump.", 409)
+      }
+      // Compare-and-set on the stored bytes, so two concurrent wording updates cannot interleave.
+      const updated = await env.USAGE_DB.prepare(
+        "UPDATE stories SET definition_json = ? WHERE story_id = ? AND version = ? AND definition_json = ?",
+      ).bind(canonical, storyId, version, row.definition_json).run()
+      const current = await select.first<StoryRow>()
+      if (!current) throw new Error("story version disappeared during a wording update")
+      if ((updated.meta.changes ?? 0) === 1) return json({ result: "updated", story: catalogueEntry(current) })
+      row = current
+    }
+    throw new Error("story wording update kept racing")
+  }
 
   const existing = await select.first<StoryRow>()
-  if (existing) return unchanged(existing)
+  if (existing) return reconcile(existing)
   if (status !== "active") return error("invalid_story", "A deprecated story version cannot be activated.", 400)
 
   const inserted = await env.USAGE_DB.prepare(`
@@ -347,7 +364,7 @@ async function activateStory(request: Request, env: Env, storyId: string, versio
   const row = await select.first<StoryRow>()
   if (!row) throw new Error("story activation was not persisted")
   if ((inserted.meta.changes ?? 0) === 1) return json({ result: "activated", story: catalogueEntry(row) }, 201)
-  return unchanged(row)
+  return reconcile(row)
 }
 
 async function deprecateStory(env: Env, storyId: string, version: number): Promise<Response> {

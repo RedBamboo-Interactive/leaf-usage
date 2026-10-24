@@ -283,6 +283,24 @@ export function canonicalStoryJson(definition: StoryDefinition): string {
   })
 }
 
+/**
+ * A story version's identity: only the fields that decide what a snapshot may contain. The
+ * wording (`question`, `shares`) and `introducedIn` are not part of it and may change in place.
+ * Order counts: dimension order fixes the canonical row form, so any reordering is a new shape.
+ */
+export function storyShapeJson(definition: StoryDefinition): string {
+  return JSON.stringify({
+    schemaVersion: definition.schemaVersion,
+    storyId: definition.storyId,
+    version: definition.version,
+    period: definition.period,
+    backfillDays: definition.backfillDays,
+    dimensions: definition.dimensions.map((dimension) => ({ key: dimension.key, values: dimension.values })),
+    measures: definition.measures.map((measure) => ({ key: measure.key, type: measure.type, max: measure.max })),
+    clientObservations: definition.clientObservations,
+  })
+}
+
 /** The definition as the schema describes it, with the Worker's current lifecycle status. */
 export function publishedStory(definition: StoryDefinition, status: StoryStatus) {
   const { schemaVersion, storyId, version, ...rest } = definition

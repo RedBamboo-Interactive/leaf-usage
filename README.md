@@ -62,18 +62,29 @@ The stored story definition drives validation (`src/contracts.ts`):
 
 | Route | Behaviour |
 |---|---|
-| `PUT /v1/admin/stories/{id}/{version}` | activate a definition (`usage-story.schema.json`); `201 activated`, `200 unchanged` when identical, `409` when the version exists with a different definition |
+| `PUT /v1/admin/stories/{id}/{version}` | activate a definition (`usage-story.schema.json`); `201 activated`, `200 unchanged`, `200 updated` (wording only), `409` when the data shape differs (see below) |
 | `POST /v1/admin/stories/{id}/{version}/deprecate` | deprecate now; uploads become `story_inactive` |
 | `GET /v1/admin/subjects` | subject id, mode, label, created and last upload (max 1000, `truncated` flag) |
 | `GET /v1/admin/snapshots?storyId=&version=&from=&to=&subject=` | subject-level rows (max 5000, `truncated` flag) |
 | `GET /v1/admin/totals?storyId=&version=&from=&to=` | subject-free aggregates kept after deprecation |
 
-Story versions are immutable. The stored definition is a canonical serialization without `status`
-(lifecycle lives in the `stories.status` column), so "byte-identical" means identical after
-canonicalization: key order and whitespace do not matter, every value and array order does. A
-deprecated version is never revived, and a definition submitted as `deprecated` is accepted only
-when that version already exists. The catalogue returns each definition in schema shape with the
-live `status`.
+A story version's identity is its **data shape**: `storyId`, `version`, `period`, `backfillDays`,
+`dimensions` (keys and values, in order), `measures` (keys, types and `max`, in order) and
+`clientObservations`. The wording (`question`, `shares`) and `introducedIn` are not part of it.
+
+- New version: `201 activated`.
+- Identical definition: `200 unchanged`.
+- Same shape, different wording: the stored wording is replaced in place, `200 updated`. Snapshots,
+  status and `activatedAt` are untouched; the catalogue serves the new wording from then on.
+- Different shape on an existing version: `409 story_version_conflict`, "The data shape changed
+  without a version bump." Nothing is changed; the fix is a new version.
+
+A new version does not retire the old one: the Worker keeps accepting every version that is not
+deprecated, so testers who have not updated keep uploading. Only an explicit deprecation stops a
+version. The stored definition is a canonical serialization without `status` (lifecycle lives in the
+`stories.status` column). A deprecated version is never revived (its wording can still be updated),
+and a definition submitted as `deprecated` is accepted only when that version already exists. The
+catalogue returns each definition in schema shape with the live `status`.
 
 ## Retention (daily cron, 03:23 UTC)
 
