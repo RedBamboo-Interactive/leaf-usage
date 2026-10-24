@@ -29,11 +29,13 @@ if (wanted.length === 0) {
   process.exit(2)
 }
 
+// Line endings follow each checkout's git settings; compare content only.
+const normalized = (path) => readFileSync(path, "utf8").replace(/\r\n/g, "\n")
+
 const drift = []
 for (const name of wanted) {
-  const content = readFileSync(join(source, name))
   const destination = join(target, name)
-  if (!existsSync(destination) || !readFileSync(destination).equals(content)) drift.push(`changed: ${name}`)
+  if (!existsSync(destination) || normalized(destination) !== normalized(join(source, name))) drift.push(`changed: ${name}`)
 }
 for (const name of jsonFiles(target)) {
   if (!wanted.includes(name)) drift.push(`stale: ${name}`)

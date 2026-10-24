@@ -26,7 +26,9 @@ describe.skipIf(!hasSource)("schema sync with the RedLeaf checkout", () => {
   it("schemas/ is an exact copy of redleaf/schemas/usage/v1 (run npm run sync-schemas)", () => {
     expect(jsonFiles(copied)).toEqual(jsonFiles(source))
     for (const name of jsonFiles(source)) {
-      expect(readFileSync(join(copied, name), "utf8"), name).toBe(readFileSync(join(source, name), "utf8"))
+      // Line endings follow each checkout's git settings; the content must match exactly.
+      const read = (directory: string) => readFileSync(join(directory, name), "utf8").replace(/\r\n/g, "\n")
+      expect(read(copied), name).toBe(read(source))
     }
   })
 })
