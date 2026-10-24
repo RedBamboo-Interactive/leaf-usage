@@ -448,6 +448,14 @@
       }
     },
     {
+      "name": "today (not a closed day)",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "period": "2026-10-25"
+      }
+    },
+    {
       "name": "future period",
       "valid": false,
       "layer": "story",

@@ -47,8 +47,8 @@ The stored story definition drives validation (`src/contracts.ts`):
 
 - Snapshot shape per `schemas/usage-snapshot.schema.json`: `schemaVersion` 1, lowercase UUID
   `snapshotId`, `storyId`, `storyVersion`, `period`, `rows`.
-- `period` is a real `YYYY-MM-DD` UTC day, not after today and not older than the story's
-  `backfillDays` + 7 days.
+- `period` is a real `YYYY-MM-DD` closed UTC day: before today (UTC), because first write wins and a
+  partial day would lock the period, and not older than the story's `backfillDays` + 7 days.
 - Each row is `{ dims, <every measure> }`. `dims` names exactly the story's dimensions, each value a
   member of its enum, so a string outside an enum can never be stored. Measures are integers from 0
   to the measure's `max`. Dimension combinations are unique and all-zero rows are refused (zero rows

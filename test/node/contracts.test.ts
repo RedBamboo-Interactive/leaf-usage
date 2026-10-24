@@ -47,6 +47,26 @@ describe("snapshots", () => {
   })
 })
 
+describe("closed days", () => {
+  const valid = snapshotFixtures.find((fixture) => fixture.valid)!.value
+  const at = (period: string, time: string) => validateSnapshot({ ...valid, period }, story, new Date(time))
+
+  it("refuses today even at 23:59:59.999 UTC", () => {
+    expect(at("2026-10-25", "2026-10-25T23:59:59.999Z")).toEqual({ ok: false, message: "period must be a closed UTC day." })
+    expect(at("2026-10-24", "2026-10-25T23:59:59.999Z").ok).toBe(true)
+  })
+
+  it("accepts yesterday from 00:00:00 UTC", () => {
+    expect(at("2026-10-25", "2026-10-26T00:00:00.000Z").ok).toBe(true)
+    expect(at("2026-10-26", "2026-10-26T00:00:00.000Z").ok).toBe(false)
+  })
+
+  it("keeps the backfill window: backfillDays + 7 days back, inclusive", () => {
+    expect(at("2026-09-18", "2026-10-25T00:00:00.000Z").ok).toBe(true)
+    expect(at("2026-09-17", "2026-10-25T23:59:59.999Z").ok).toBe(false)
+  })
+})
+
 describe("dates", () => {
   it.each([
     ["2026-10-24", true], ["2024-02-29", true], ["2026-02-29", false], ["2026-13-01", false],

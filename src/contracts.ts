@@ -333,7 +333,8 @@ export function validateSnapshot(input: unknown, story: StoryDefinition, now: Da
 
   const period = parseUtcDay(snapshot.period)!
   const today = utcDay(now)
-  if (period > today) return fail("period is in the future.")
+  // First write wins, so a partial day must never be accepted: only closed UTC days.
+  if (period >= today) return fail("period must be a closed UTC day.")
   if (period < today - (story.backfillDays + LATE_UPLOAD_GRACE_DAYS) * DAY_MS) {
     return fail(`period is older than the story's backfill window plus ${LATE_UPLOAD_GRACE_DAYS} days.`)
   }

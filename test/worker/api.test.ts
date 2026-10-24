@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   activeStory,
   admin,
@@ -156,11 +156,44 @@ describe("snapshot upload", () => {
     expect(result.status).toBe("accepted")
   })
 
-  it("accepts today and the oldest day of the backfill window plus 7 days", async () => {
+  it("accepts yesterday and the oldest day of the backfill window plus 7 days", async () => {
     const story = await activeStory({ backfillDays: 3 })
     const subject = await registeredSubject()
-    const results = await upload(subject, [snapshot(story, day(0)), snapshot(story, day(10))])
+    const results = await upload(subject, [snapshot(story, day(1)), snapshot(story, day(10))])
     expect(results.map((result) => result.status)).toEqual(["accepted", "accepted"])
+  })
+
+  it("refuses today, because a partial day would lock the period", async () => {
+    const story = await activeStory()
+    const subject = await registeredSubject()
+    const [result] = await upload(subject, [snapshot(story, day(0))])
+    expect(result).toMatchObject({ status: "invalid", message: "period must be a closed UTC day." })
+    expect(await db().prepare("SELECT COUNT(*) AS n FROM snapshots WHERE subject_id = ?").bind(subject.subjectId).first("n")).toBe(0)
+  })
+
+  describe("closed-day boundary", () => {
+    const today = utcDay(new Date())
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it("still refuses today at 23:59:59 UTC", async () => {
+      const story = await activeStory()
+      const subject = await registeredSubject()
+      vi.useFakeTimers({ toFake: ["Date"] })
+      vi.setSystemTime(today + 86_400_000 - 1000)
+      const results = await upload(subject, [snapshot(story, formatUtcDay(today)), snapshot(story, formatUtcDay(today - 86_400_000))])
+      expect(results.map((result) => result.status)).toEqual(["invalid", "accepted"])
+    })
+
+    it("accepts that day at 00:00:00 UTC the next day", async () => {
+      const story = await activeStory()
+      const subject = await registeredSubject()
+      vi.useFakeTimers({ toFake: ["Date"] })
+      vi.setSystemTime(today + 86_400_000)
+      const results = await upload(subject, [snapshot(story, formatUtcDay(today)), snapshot(story, formatUtcDay(today + 86_400_000))])
+      expect(results.map((result) => result.status)).toEqual(["accepted", "invalid"])
+    })
   })
 
   it("reports an identical retry as duplicate, even with keys reordered", async () => {
@@ -288,7 +321,7 @@ describe("snapshot upload", () => {
   it("refuses batches over 50 items, empty batches and unknown envelope keys", async () => {
     const story = await activeStory({ backfillDays: 30 })
     const subject = await registeredSubject()
-    const items = Array.from({ length: 51 }, (_, index) => snapshot(story, day(index % 30)))
+    const items = Array.from({ length: 51 }, (_, index) => snapshot(story, day(1 + (index % 30))))
     expect((await send("POST", "/v1/snapshots", { subjectId: subject.subjectId, snapshots: items }, subject.secret)).status).toBe(400)
     expect((await send("POST", "/v1/snapshots", { subjectId: subject.subjectId, snapshots: [] }, subject.secret)).status).toBe(400)
     expect((await send("POST", "/v1/snapshots", { subjectId: subject.subjectId, snapshots: [snapshot(story, day(1))], client: "x" }, subject.secret)).status).toBe(400)
@@ -298,7 +331,7 @@ describe("snapshot upload", () => {
     const story = await activeStory({ backfillDays: 30 })
     const other = await activeStory({ backfillDays: 30 })
     const subject = await registeredSubject()
-    const items = Array.from({ length: 50 }, (_, index) => snapshot(index < 25 ? story : other, day(index % 25)))
+    const items = Array.from({ length: 50 }, (_, index) => snapshot(index < 25 ? story : other, day(1 + (index % 25))))
     const results = await upload(subject, items)
     expect(results.filter((result) => result.status === "accepted")).toHaveLength(50)
   })
