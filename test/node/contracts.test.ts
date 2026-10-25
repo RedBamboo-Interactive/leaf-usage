@@ -115,7 +115,7 @@ describe("shape hash", () => {
   })
 })
 
-describe("release-version format dimensions", () => {
+describe("release-version and git-commit format dimensions", () => {
   const versionStory = (() => {
     const result = validateStoryDefinition(formatStory)
     if (!result.ok) throw new Error(result.message)
@@ -126,15 +126,19 @@ describe("release-version format dimensions", () => {
   // (ShapeHash_OfAFormatDimension_MatchesTheWorker_AndCountsTheFormat).
   it("hashes the format as part of the shape, like RedLeaf", () => {
     const shape = storyShapeJson(versionStory)
-    expect(shape).toBe('{"schemaVersion":1,"storyId":"installed-components","version":1,"period":"day","backfillDays":0,"dimensions":[{"key":"component","values":["redleaf","nova","other"]},{"key":"version","format":"release-version"},{"key":"state","values":["enabled","disabled"]}],"measures":[{"key":"components","type":"count","max":500}],"clientObservations":[]}')
-    const changed: StoryDefinition = { ...versionStory, dimensions: [versionStory.dimensions[0], { key: "version", values: ["unreleased"] }, versionStory.dimensions[2]] }
-    expect(storyShapeJson(changed)).not.toBe(shape)
+    expect(shape).toBe('{"schemaVersion":1,"storyId":"installed-components","version":1,"period":"day","backfillDays":0,"dimensions":[{"key":"component","values":["redleaf","nova","other"]},{"key":"build","values":["release","source","unknown"]},{"key":"version","format":"release-version"},{"key":"commit","format":"git-commit"},{"key":"state","values":["enabled","disabled"]}],"measures":[{"key":"components","type":"count","max":500}],"clientObservations":[]}')
+    const asEnum: StoryDefinition = { ...versionStory, dimensions: versionStory.dimensions.map((d) => d.key === "version" ? { key: "version", values: ["unknown"] } : d) }
+    expect(storyShapeJson(asEnum)).not.toBe(shape)
+    const swapped: StoryDefinition = { ...versionStory, dimensions: versionStory.dimensions.map((d) => d.key === "commit" ? { key: "commit", format: "release-version" as const } : d) }
+    expect(storyShapeJson(swapped)).not.toBe(shape)
   })
 
   it("stores a format dimension as { key, format } and enum dimensions unchanged", () => {
     expect(JSON.parse(canonicalStoryJson(versionStory)).dimensions).toEqual([
       { key: "component", values: ["redleaf", "nova", "other"] },
+      { key: "build", values: ["release", "source", "unknown"] },
       { key: "version", format: "release-version" },
+      { key: "commit", format: "git-commit" },
       { key: "state", values: ["enabled", "disabled"] },
     ])
     expect(canonicalStoryJson(story)).toContain('"dimensions":[{"key":"harness","values":["claude-code","codex","opencode","other"]}')
@@ -143,9 +147,16 @@ describe("release-version format dimensions", () => {
   it("matches the golden hash shared with RedLeaf", () => {
     const golden = {
       ...versionStory,
-      dimensions: [{ key: "component", values: ["nova", "other"] }, { key: "version", format: "release-version" as const }, { key: "state", values: ["enabled", "disabled"] }],
+      dimensions: [
+        { key: "component", values: ["nova", "other"] },
+        { key: "build", values: ["release", "source", "unknown"] },
+        { key: "version", format: "release-version" as const },
+        { key: "commit", format: "git-commit" as const },
+        { key: "state", values: ["enabled", "disabled"] },
+      ],
     }
-    expect(createHash("sha256").update(storyShapeJson(golden)).digest("hex")).toBe("ba04733a5b255b96df2d979e97f14224a3bb60edbcdfde64f3040ea9730365ad")
+    expect(storyShapeJson(golden)).toBe('{"schemaVersion":1,"storyId":"installed-components","version":1,"period":"day","backfillDays":0,"dimensions":[{"key":"component","values":["nova","other"]},{"key":"build","values":["release","source","unknown"]},{"key":"version","format":"release-version"},{"key":"commit","format":"git-commit"},{"key":"state","values":["enabled","disabled"]}],"measures":[{"key":"components","type":"count","max":500}],"clientObservations":[]}')
+    expect(createHash("sha256").update(storyShapeJson(golden)).digest("hex")).toBe("9d70dddf983e3dc337d18270a5de3918cbd0a359e25cb687976b79d99bc4a280")
   })
 
   it.each(formatSnapshotFixtures.map((fixture) => [fixture.name, fixture] as const))("%s", (_name, fixture) => {
@@ -153,8 +164,11 @@ describe("release-version format dimensions", () => {
   })
 
   it("says which format a refused value is outside of", () => {
-    const refused = validateSnapshot({ ...formatSnapshotFixtures[0].value, rows: [{ dims: { component: "nova", version: "0.1.38-beta", state: "enabled" }, components: 1 }] }, versionStory, now)
+    const dims = { component: "nova", build: "source", version: "0.1.6", commit: "ccbb5c4", state: "enabled" }
+    const refused = validateSnapshot({ ...formatSnapshotFixtures[0].value, rows: [{ dims: { ...dims, version: "0.1.38-beta" }, components: 1 }] }, versionStory, now)
     expect(refused).toEqual({ ok: false, message: 'Row 0 has a value outside the "version" release-version format.' })
+    const dirty = validateSnapshot({ ...formatSnapshotFixtures[0].value, rows: [{ dims: { ...dims, commit: "ccbb5c4d" }, components: 1 }] }, versionStory, now)
+    expect(dirty).toEqual({ ok: false, message: 'Row 0 has a value outside the "commit" git-commit format.' })
   })
 })
 

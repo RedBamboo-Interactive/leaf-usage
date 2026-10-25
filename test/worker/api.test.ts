@@ -529,31 +529,41 @@ describe("admin", () => {
     ])
   })
 
-  it("activates a story with a release-version format dimension and validates uploads against it", async () => {
+  it("activates a story with release-version and git-commit format dimensions and validates uploads against them", async () => {
     const story = await activeStory({
       backfillDays: 0,
       dimensions: [
         { key: "component", values: ["redleaf", "nova", "other"] },
+        { key: "build", values: ["release", "source", "unknown"] },
         { key: "version", format: "release-version" },
+        { key: "commit", format: "git-commit" },
         { key: "state", values: ["enabled", "disabled"] },
       ],
       measures: [{ key: "components", type: "count", max: 500 }],
     })
     const stored = await (await admin("GET", `/v1/admin/stories/${story.storyId}/history`)).json() as { current: { definition: { dimensions: unknown[] } } }
-    expect(stored.current.definition.dimensions[1]).toEqual({ key: "version", format: "release-version" })
+    expect(stored.current.definition.dimensions[2]).toEqual({ key: "version", format: "release-version" })
+    expect(stored.current.definition.dimensions[3]).toEqual({ key: "commit", format: "git-commit" })
 
     const subject = await registeredSubject()
     const [accepted] = await upload(subject, [snapshot(story, day(1), [
-      { dims: { component: "redleaf", version: "0.1.37", state: "enabled" }, components: 1 },
-      { dims: { component: "other", version: "unreleased", state: "disabled" }, components: 2 },
+      { dims: { component: "redleaf", build: "release", version: "0.1.37", commit: "none", state: "enabled" }, components: 1 },
+      { dims: { component: "nova", build: "source", version: "0.1.6", commit: "ccbb5c4", state: "enabled" }, components: 1 },
+      { dims: { component: "other", build: "unknown", version: "unknown", commit: "none", state: "disabled" }, components: 2 },
     ])])
     expect(accepted.status).toBe("accepted")
 
     const other = await registeredSubject()
     const [refused] = await upload(other, [snapshot(story, day(1), [
-      { dims: { component: "nova", version: "0.1.38-beta.1", state: "enabled" }, components: 1 },
+      { dims: { component: "nova", build: "release", version: "0.1.38-beta.1", commit: "none", state: "enabled" }, components: 1 },
     ])])
     expect(refused).toMatchObject({ status: "invalid", message: 'Row 0 has a value outside the "version" release-version format.' })
+
+    const third = await registeredSubject()
+    const [dirty] = await upload(third, [snapshot(story, day(1), [
+      { dims: { component: "nova", build: "source", version: "0.1.6", commit: "ccbb5c4.dirty", state: "enabled" }, components: 1 },
+    ])])
+    expect(dirty).toMatchObject({ status: "invalid", message: 'Row 0 has a value outside the "commit" git-commit format.' })
   })
 
   it("keeps every previous definition, newest first", async () => {

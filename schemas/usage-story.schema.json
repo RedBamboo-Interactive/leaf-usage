@@ -47,7 +47,8 @@
             "format": {
               "type": "string",
               "enum": [
-                "release-version"
+                "release-version",
+                "git-commit"
               ]
             }
           }

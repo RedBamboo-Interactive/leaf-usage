@@ -49,10 +49,12 @@ The stored story definition drives validation (`src/contracts.ts`):
   `snapshotId`, `storyId`, `storyVersion`, `period`, `rows`.
 - `period` is a real `YYYY-MM-DD` closed UTC day: before today (UTC), because first write wins and a
   partial day would lock the period, and not older than the story's `backfillDays` + 7 days.
-- A story dimension is exactly `{ key, values }` (a closed enum) or exactly `{ key, format }`. The
-  only format is `release-version`: a value must be a release number matching
-  `^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$` or the literal `unreleased`.
-  Both, neither, or an unknown format are refused at activation.
+- A story dimension is exactly `{ key, values }` (a closed enum) or exactly `{ key, format }`. There
+  are two formats. `release-version`: a value must be a release number matching
+  `^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$` or the literal `unknown`.
+  `git-commit`: a value must be a short commit matching `^[0-9a-f]{7}$` or the literal `none`.
+  Both, neither, or an unknown format are refused at activation. The format is part of the shape
+  hash, so changing it is a shape change; stories without formats hash exactly as before.
 - Each row is `{ dims, <every measure> }`. `dims` names exactly the story's dimensions, each value a
   member of its enum or of its format, so free text can never be stored. Measures are integers from 0
   to the measure's `max`. Dimension combinations are unique and all-zero rows are refused (zero rows

@@ -10,13 +10,14 @@ export type SubjectMode = "anonymous" | "named"
 export type StoryStatus = "active" | "deprecated"
 export type ClientObservation = "theme"
 
-export type DimensionFormat = "release-version"
+export type DimensionFormat = "release-version" | "git-commit"
 
 /**
  * A row dimension: a closed enum `{ key, values }`, or `{ key, format }` whose members are not
- * listed but must match the format exactly. The only format is `release-version`: a release number
- * x.y.z (each part 0-9999, no leading zeros, no suffix) or the literal `unreleased`. Neither shape
- * can carry free text. Mirrors RedLeaf's UsageDimension.
+ * listed but must match the format exactly. `release-version`: a release number x.y.z (each part
+ * 0-9999, no leading zeros, no suffix) or the literal `unknown`. `git-commit`: a short commit of
+ * exactly 7 lowercase hex characters or the literal `none`. Neither shape can carry free text.
+ * Mirrors RedLeaf's UsageDimension.
  */
 export type StoryDimension =
   | { key: string; values: string[]; format?: undefined }
@@ -108,9 +109,11 @@ const CLIENT_OBSERVATIONS: readonly string[] = ["theme"]
 const STORY_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const KEY = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/
 const MEMBER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const DIMENSION_FORMATS: readonly string[] = ["release-version"]
-export const UNRELEASED = "unreleased"
+const DIMENSION_FORMATS: readonly string[] = ["release-version", "git-commit"]
+export const UNKNOWN_VERSION = "unknown"
 const RELEASE_VERSION = /^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$/
+export const NO_COMMIT = "none"
+const GIT_COMMIT = /^[0-9a-f]{7}$/
 const SEMVER = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 const SNAPSHOT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const NON_BLANK = /\S/
@@ -296,7 +299,8 @@ function dimensionJson(dimension: StoryDimension) {
 
 /** Whether a row value belongs to the dimension: a listed value, or a member of its format. */
 export function isDimensionMember(dimension: StoryDimension, value: string): boolean {
-  if (dimension.format === "release-version") return value === UNRELEASED || RELEASE_VERSION.test(value)
+  if (dimension.format === "release-version") return value === UNKNOWN_VERSION || RELEASE_VERSION.test(value)
+  if (dimension.format === "git-commit") return value === NO_COMMIT || GIT_COMMIT.test(value)
   return dimension.values !== undefined && dimension.values.includes(value)
 }
 

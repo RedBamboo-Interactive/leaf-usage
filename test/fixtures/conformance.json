@@ -1,5 +1,5 @@
 {
-  "description": "Fixtures shared by the validator and the copied RedLeaf schemas. layer=schema: the static JSON schema must reject too. layer=story: only the definition-driven validator can reject (enum membership, bounds against the stored story, period window). formatStory and formatSnapshots cover a release-version format dimension.",
+  "description": "Fixtures shared by the validator and the copied RedLeaf schemas. layer=schema: the static JSON schema must reject too. layer=story: only the definition-driven validator can reject (enum membership, bounds against the stored story, period window). formatStory and formatSnapshots cover the release-version and git-commit format dimensions.",
   "now": "2026-10-25T12:00:00.000Z",
   "referenceStory": {
     "schemaVersion": 1,
@@ -284,6 +284,27 @@
       }
     },
     {
+      "name": "git-commit format dimension",
+      "valid": true,
+      "patch": {
+        "dimensions": [
+          {
+            "key": "harness",
+            "values": [
+              "claude-code",
+              "codex",
+              "opencode",
+              "other"
+            ]
+          },
+          {
+            "key": "commit",
+            "format": "git-commit"
+          }
+        ]
+      }
+    },
+    {
       "name": "dimension with both values and a format",
       "valid": false,
       "layer": "schema",
@@ -293,7 +314,7 @@
             "key": "version",
             "format": "release-version",
             "values": [
-              "unreleased"
+              "unknown"
             ]
           }
         ]
@@ -320,6 +341,35 @@
           {
             "key": "version",
             "format": "free-text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "capitalised git-commit format",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "commit",
+            "format": "Git-Commit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "git-commit dimension with listed values",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "commit",
+            "format": "git-commit",
+            "values": [
+              "none"
+            ]
           }
         ]
       }
@@ -614,8 +664,8 @@
     "storyId": "installed-components",
     "version": 1,
     "status": "active",
-    "question": "Laurent wants to know which parts of Leaf testers have installed and which release they run.",
-    "shares": "Once a day: each part of Leaf, whether it is on, and its release number.",
+    "question": "Laurent wants to know which parts of Leaf testers have installed, how they were built and which version they run.",
+    "shares": "Once a day: each part of Leaf, whether it is on, release or source, its version number and, for source builds, its short commit.",
     "period": "day",
     "backfillDays": 0,
     "dimensions": [
@@ -628,8 +678,20 @@
         ]
       },
       {
+        "key": "build",
+        "values": [
+          "release",
+          "source",
+          "unknown"
+        ]
+      },
+      {
         "key": "version",
         "format": "release-version"
+      },
+      {
+        "key": "commit",
+        "format": "git-commit"
       },
       {
         "key": "state",
@@ -651,7 +713,7 @@
   },
   "formatSnapshots": [
     {
-      "name": "release numbers and unreleased",
+      "name": "release numbers, source commits and the literals",
       "valid": true,
       "value": {
         "schemaVersion": 1,
@@ -663,7 +725,19 @@
           {
             "dims": {
               "component": "redleaf",
+              "build": "release",
               "version": "0.1.37",
+              "commit": "none",
+              "state": "enabled"
+            },
+            "components": 1
+          },
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "ccbb5c4",
               "state": "enabled"
             },
             "components": 1
@@ -671,7 +745,9 @@
           {
             "dims": {
               "component": "other",
-              "version": "unreleased",
+              "build": "unknown",
+              "version": "unknown",
+              "commit": "none",
               "state": "disabled"
             },
             "components": 2
@@ -687,7 +763,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "9999.9999.9999",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -704,7 +782,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "0.1.38-beta.1",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -721,7 +801,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "0.1.37+build.5",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -738,7 +820,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "v0.1.37",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -755,7 +839,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "0.01.37",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -772,7 +858,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "10000.0.0",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -789,7 +877,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "0.1",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -806,7 +896,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "my secret project",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -823,7 +915,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "0.1.37\n",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -832,7 +926,7 @@
       }
     },
     {
-      "name": "capitalised unreleased",
+      "name": "capitalised unknown",
       "valid": false,
       "layer": "schema",
       "patch": {
@@ -840,7 +934,9 @@
           {
             "dims": {
               "component": "nova",
-              "version": "Unreleased",
+              "build": "release",
+              "version": "Unknown",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -857,7 +953,9 @@
           {
             "dims": {
               "component": "nova",
+              "build": "release",
               "version": "other",
+              "commit": "none",
               "state": "enabled"
             },
             "components": 1
@@ -874,7 +972,349 @@
           {
             "dims": {
               "component": "0.1.37",
+              "build": "release",
               "version": "0.1.37",
+              "commit": "none",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "the old unreleased literal",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "unreleased",
+              "commit": "ccbb5c4",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "none as a version",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "none",
+              "commit": "ccbb5c4",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "all-digit short commit",
+      "valid": true,
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "0000000",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "source build without a commit",
+      "valid": true,
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "none",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "capitalised short commit",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "CCBB5C4",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "eight-character commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "ccbb5c4d",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "twelve-character leafpkg commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "c013ae0e0a1b",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "full commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "ed00e2a5ab0f8127612a1c4608974f31b82bf9f3",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "six-character commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "ccbb5c",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "dirty marker on the commit",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "ccbb5c4.dirty",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "dashed dirty marker on the commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "ccbb5c4-dirty",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "non-hex commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "ccbb5cg",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "branch name as the commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "my-branch",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "capitalised none",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "None",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown as a commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "unknown",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "release number as a commit",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "0.1.37",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "free text as a commit",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "source",
+              "version": "0.1.6",
+              "commit": "my secret project",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "build outside its enum",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "build": "dev",
+              "version": "0.1.6",
+              "commit": "ccbb5c4",
               "state": "enabled"
             },
             "components": 1
