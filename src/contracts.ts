@@ -10,10 +10,17 @@ export type SubjectMode = "anonymous" | "named"
 export type StoryStatus = "active" | "deprecated"
 export type ClientObservation = "theme"
 
-export interface StoryDimension {
-  key: string
-  values: string[]
-}
+export type DimensionFormat = "release-version"
+
+/**
+ * A row dimension: a closed enum `{ key, values }`, or `{ key, format }` whose members are not
+ * listed but must match the format exactly. The only format is `release-version`: a release number
+ * x.y.z (each part 0-9999, no leading zeros, no suffix) or the literal `unreleased`. Neither shape
+ * can carry free text. Mirrors RedLeaf's UsageDimension.
+ */
+export type StoryDimension =
+  | { key: string; values: string[]; format?: undefined }
+  | { key: string; format: DimensionFormat; values?: undefined }
 
 export interface StoryMeasure {
   key: string
@@ -101,6 +108,9 @@ const CLIENT_OBSERVATIONS: readonly string[] = ["theme"]
 const STORY_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const KEY = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/
 const MEMBER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const DIMENSION_FORMATS: readonly string[] = ["release-version"]
+export const UNRELEASED = "unreleased"
+const RELEASE_VERSION = /^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$/
 const SEMVER = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 const SNAPSHOT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const NON_BLANK = /\S/
@@ -206,12 +216,20 @@ export function validateStoryDefinition(input: unknown): Result<SubmittedStory> 
   const dimensions: StoryDimension[] = []
   const keys = new Set<string>()
   for (const dimension of input.dimensions) {
-    if (!object(dimension) || !only(dimension, ["key", "values"]) || !has(dimension, ["key", "values"])) {
-      return fail("Each dimension must be exactly { key, values }.")
+    const shape = object(dimension) && Object.hasOwn(dimension, "format") ? ["key", "format"] : ["key", "values"]
+    if (!object(dimension) || !only(dimension, shape) || !has(dimension, shape)) {
+      return fail("Each dimension must be exactly { key, values } or { key, format }.")
     }
     if (!identifier(KEY, dimension.key)) return fail("Dimension keys must be snake_case.")
     if (keys.has(dimension.key)) return fail(`Key "${dimension.key}" is declared twice.`)
     keys.add(dimension.key)
+    if (shape[1] === "format") {
+      if (typeof dimension.format !== "string" || !DIMENSION_FORMATS.includes(dimension.format)) {
+        return fail(`Dimension "${dimension.key}" format must be one of: ${DIMENSION_FORMATS.join(", ")}.`)
+      }
+      dimensions.push({ key: dimension.key, format: dimension.format as DimensionFormat })
+      continue
+    }
     const values = dimension.values
     if (!Array.isArray(values) || values.length < 1 || values.length > MAX_DIMENSION_VALUES) {
       return fail(`Dimension "${dimension.key}" must list 1 to ${MAX_DIMENSION_VALUES} values.`)
@@ -269,6 +287,19 @@ export function validateStoryDefinition(input: unknown): Result<SubmittedStory> 
   }
 }
 
+/** `{key, values}` or `{key, format}`: enum dimensions serialize exactly as before formats existed. */
+function dimensionJson(dimension: StoryDimension) {
+  return dimension.format !== undefined
+    ? { key: dimension.key, format: dimension.format }
+    : { key: dimension.key, values: dimension.values }
+}
+
+/** Whether a row value belongs to the dimension: a listed value, or a member of its format. */
+export function isDimensionMember(dimension: StoryDimension, value: string): boolean {
+  if (dimension.format === "release-version") return value === UNRELEASED || RELEASE_VERSION.test(value)
+  return dimension.values !== undefined && dimension.values.includes(value)
+}
+
 /** Fixed key order, so equal definitions always serialize to the same bytes. */
 export function canonicalStoryJson(definition: StoryDefinition): string {
   return JSON.stringify({
@@ -279,7 +310,7 @@ export function canonicalStoryJson(definition: StoryDefinition): string {
     shares: definition.shares,
     period: definition.period,
     backfillDays: definition.backfillDays,
-    dimensions: definition.dimensions.map((dimension) => ({ key: dimension.key, values: dimension.values })),
+    dimensions: definition.dimensions.map(dimensionJson),
     measures: definition.measures.map((measure) => ({ key: measure.key, type: measure.type, max: measure.max })),
     clientObservations: definition.clientObservations,
     introducedIn: definition.introducedIn,
@@ -300,7 +331,7 @@ export function storyShapeJson(definition: StoryDefinition): string {
     version: definition.version,
     period: definition.period,
     backfillDays: definition.backfillDays,
-    dimensions: definition.dimensions.map((dimension) => ({ key: dimension.key, values: dimension.values })),
+    dimensions: definition.dimensions.map(dimensionJson),
     measures: definition.measures.map((measure) => ({ key: measure.key, type: measure.type, max: measure.max })),
     clientObservations: definition.clientObservations,
   })
@@ -378,8 +409,10 @@ export function validateSnapshot(input: unknown, story: StoryDefinition, now: Da
     const canonicalDims: Record<string, string> = {}
     for (const dimension of story.dimensions) {
       const value = dims[dimension.key]
-      if (typeof value !== "string" || !dimension.values.includes(value)) {
-        return fail(`Row ${index} has a value outside the "${dimension.key}" enum.`)
+      if (typeof value !== "string" || !isDimensionMember(dimension, value)) {
+        return fail(dimension.format !== undefined
+          ? `Row ${index} has a value outside the "${dimension.key}" ${dimension.format} format.`
+          : `Row ${index} has a value outside the "${dimension.key}" enum.`)
       }
       canonicalDims[dimension.key] = value
     }

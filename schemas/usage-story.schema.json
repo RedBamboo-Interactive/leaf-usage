@@ -5,28 +5,53 @@
   "$ref": "#/$defs/UsageStoryDefinition",
   "$defs": {
     "UsageDimension": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "key": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$",
-          "maxLength": 64
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "key",
+            "values"
+          ],
+          "properties": {
+            "key": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$",
+              "maxLength": 64
+            },
+            "values": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]\u002B(?:-[a-z0-9]\u002B)*$",
+                "maxLength": 64
+              }
+            }
+          }
         },
-        "values": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9]\u002B(?:-[a-z0-9]\u002B)*$",
-            "maxLength": 64
-          },
-          "minItems": 1,
-          "uniqueItems": true
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "key",
+            "format"
+          ],
+          "properties": {
+            "key": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]\u002B)*$",
+              "maxLength": 64
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "release-version"
+              ]
+            }
+          }
         }
-      },
-      "required": [
-        "key",
-        "values"
       ]
     },
     "UsageMeasure": {

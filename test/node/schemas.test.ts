@@ -5,7 +5,7 @@ import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js"
 import addFormats from "ajv-formats"
 import { describe, expect, it } from "vitest"
 import { validateSnapshot, validateStoryDefinition } from "../../src/contracts"
-import { now, referenceStory, snapshotFixtures, storyFixtures, type Fixture } from "./fixtures"
+import { formatSnapshotFixtures, formatStory, now, referenceStory, snapshotFixtures, storyFixtures, type Fixture } from "./fixtures"
 
 // RedLeaf generates schemas/usage/v1/*.schema.json from its C# contracts; scripts/sync-schemas.mjs
 // copies them into ./schemas. These tests are skipped (visibly) until the copy exists.
@@ -47,6 +47,8 @@ describe.skipIf(!hasCopy)("validator conformance with the copied schemas", () =>
   }
   const story = validateStoryDefinition(referenceStory)
   if (!story.ok) throw new Error(story.message)
+  const versionStory = validateStoryDefinition(formatStory)
+  if (!versionStory.ok) throw new Error(versionStory.message)
 
   const cases = (fixtures: Fixture[]) => fixtures.map((fixture) => [fixture.name, fixture] as const)
 
@@ -60,6 +62,22 @@ describe.skipIf(!hasCopy)("validator conformance with the copied schemas", () =>
       expect(ours).toBe(false)
       if (fixture.layer === "schema") expect(schemaValid, "schema accepts a structurally invalid fixture").toBe(false)
     }
+  })
+
+  it.each(cases(formatSnapshotFixtures))("format snapshot: %s", (_name, fixture) => {
+    const schemaValid = load(SNAPSHOT_SCHEMA)(fixture.value)
+    const ours = validateSnapshot(fixture.value, versionStory.value.definition, now).ok
+    if (fixture.valid) {
+      expect(schemaValid, "schema rejects a valid fixture").toBe(true)
+      expect(ours).toBe(true)
+    } else {
+      expect(ours).toBe(false)
+      if (fixture.layer === "schema") expect(schemaValid, "schema accepts a structurally invalid fixture").toBe(false)
+    }
+  })
+
+  it("format story: schema-valid", () => {
+    expect(load(STORY_SCHEMA)(formatStory)).toBe(true)
   })
 
   it.each(cases(snapshotFixtures))("snapshot: %s", (_name, fixture) => {

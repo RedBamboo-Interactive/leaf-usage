@@ -1,5 +1,5 @@
 {
-  "description": "Fixtures shared by the validator and the copied RedLeaf schemas. layer=schema: the static JSON schema must reject too. layer=story: only the definition-driven validator can reject (enum membership, bounds against the stored story, period window).",
+  "description": "Fixtures shared by the validator and the copied RedLeaf schemas. layer=schema: the static JSON schema must reject too. layer=story: only the definition-driven validator can reject (enum membership, bounds against the stored story, period window). formatStory and formatSnapshots cover a release-version format dimension.",
   "now": "2026-10-25T12:00:00.000Z",
   "referenceStory": {
     "schemaVersion": 1,
@@ -261,6 +261,95 @@
           }
         ]
       }
+    },
+    {
+      "name": "release-version format dimension",
+      "valid": true,
+      "patch": {
+        "dimensions": [
+          {
+            "key": "harness",
+            "values": [
+              "claude-code",
+              "codex",
+              "opencode",
+              "other"
+            ]
+          },
+          {
+            "key": "version",
+            "format": "release-version"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dimension with both values and a format",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "version",
+            "format": "release-version",
+            "values": [
+              "unreleased"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "dimension with neither values nor a format",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "version"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown dimension format",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "version",
+            "format": "free-text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "null dimension format",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "version",
+            "format": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "format dimension with an extra pattern",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "dimensions": [
+          {
+            "key": "version",
+            "format": "release-version",
+            "pattern": ".*"
+          }
+        ]
+      }
     }
   ],
   "snapshots": [
@@ -515,6 +604,280 @@
             },
             "sessions": 0,
             "messages": 0
+          }
+        ]
+      }
+    }
+  ],
+  "formatStory": {
+    "schemaVersion": 1,
+    "storyId": "installed-components",
+    "version": 1,
+    "status": "active",
+    "question": "Laurent wants to know which parts of Leaf testers have installed and which release they run.",
+    "shares": "Once a day: each part of Leaf, whether it is on, and its release number.",
+    "period": "day",
+    "backfillDays": 0,
+    "dimensions": [
+      {
+        "key": "component",
+        "values": [
+          "redleaf",
+          "nova",
+          "other"
+        ]
+      },
+      {
+        "key": "version",
+        "format": "release-version"
+      },
+      {
+        "key": "state",
+        "values": [
+          "enabled",
+          "disabled"
+        ]
+      }
+    ],
+    "measures": [
+      {
+        "key": "components",
+        "type": "count",
+        "max": 500
+      }
+    ],
+    "clientObservations": [],
+    "introducedIn": "0.1.38"
+  },
+  "formatSnapshots": [
+    {
+      "name": "release numbers and unreleased",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "snapshotId": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
+        "storyId": "installed-components",
+        "storyVersion": 1,
+        "period": "2026-10-24",
+        "rows": [
+          {
+            "dims": {
+              "component": "redleaf",
+              "version": "0.1.37",
+              "state": "enabled"
+            },
+            "components": 1
+          },
+          {
+            "dims": {
+              "component": "other",
+              "version": "unreleased",
+              "state": "disabled"
+            },
+            "components": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "largest release number",
+      "valid": true,
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "9999.9999.9999",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "prerelease version",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "0.1.38-beta.1",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "build metadata",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "0.1.37+build.5",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "v-prefixed version",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "v0.1.37",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "leading zero in a version part",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "0.01.37",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "version part over 9999",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "10000.0.0",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "two-part version",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "0.1",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "free text in the version",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "my secret project",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "trailing newline in the version",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "0.1.37\n",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "capitalised unreleased",
+      "valid": false,
+      "layer": "schema",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "Unreleased",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "kebab-case word in the version",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "nova",
+              "version": "other",
+              "state": "enabled"
+            },
+            "components": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "release number in an enum dimension",
+      "valid": false,
+      "layer": "story",
+      "patch": {
+        "rows": [
+          {
+            "dims": {
+              "component": "0.1.37",
+              "version": "0.1.37",
+              "state": "enabled"
+            },
+            "components": 1
           }
         ]
       }

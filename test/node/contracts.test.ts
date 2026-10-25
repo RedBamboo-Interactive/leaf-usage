@@ -10,7 +10,7 @@ import {
   validateStoryDefinition,
   type StoryDefinition,
 } from "../../src/contracts"
-import { now, referenceStory, snapshotFixtures, storyFixtures } from "./fixtures"
+import { formatStory, formatSnapshotFixtures, now, referenceStory, snapshotFixtures, storyFixtures } from "./fixtures"
 
 const story = (() => {
   const result = validateStoryDefinition(referenceStory)
@@ -112,6 +112,49 @@ describe("shape hash", () => {
     const reworded: StoryDefinition = { ...story, question: "Another question?", shares: "Something else.", introducedIn: "9.9.9" }
     expect(storyShapeJson(reworded)).toBe(shape)
     expect(storyShapeJson({ ...story, backfillDays: 7 })).not.toBe(shape)
+  })
+})
+
+describe("release-version format dimensions", () => {
+  const versionStory = (() => {
+    const result = validateStoryDefinition(formatStory)
+    if (!result.ok) throw new Error(result.message)
+    return result.value.definition
+  })()
+
+  // The same golden value is asserted by RedLeaf's collector tests
+  // (ShapeHash_OfAFormatDimension_MatchesTheWorker_AndCountsTheFormat).
+  it("hashes the format as part of the shape, like RedLeaf", () => {
+    const shape = storyShapeJson(versionStory)
+    expect(shape).toBe('{"schemaVersion":1,"storyId":"installed-components","version":1,"period":"day","backfillDays":0,"dimensions":[{"key":"component","values":["redleaf","nova","other"]},{"key":"version","format":"release-version"},{"key":"state","values":["enabled","disabled"]}],"measures":[{"key":"components","type":"count","max":500}],"clientObservations":[]}')
+    const changed: StoryDefinition = { ...versionStory, dimensions: [versionStory.dimensions[0], { key: "version", values: ["unreleased"] }, versionStory.dimensions[2]] }
+    expect(storyShapeJson(changed)).not.toBe(shape)
+  })
+
+  it("stores a format dimension as { key, format } and enum dimensions unchanged", () => {
+    expect(JSON.parse(canonicalStoryJson(versionStory)).dimensions).toEqual([
+      { key: "component", values: ["redleaf", "nova", "other"] },
+      { key: "version", format: "release-version" },
+      { key: "state", values: ["enabled", "disabled"] },
+    ])
+    expect(canonicalStoryJson(story)).toContain('"dimensions":[{"key":"harness","values":["claude-code","codex","opencode","other"]}')
+  })
+
+  it("matches the golden hash shared with RedLeaf", () => {
+    const golden = {
+      ...versionStory,
+      dimensions: [{ key: "component", values: ["nova", "other"] }, { key: "version", format: "release-version" as const }, { key: "state", values: ["enabled", "disabled"] }],
+    }
+    expect(createHash("sha256").update(storyShapeJson(golden)).digest("hex")).toBe("ba04733a5b255b96df2d979e97f14224a3bb60edbcdfde64f3040ea9730365ad")
+  })
+
+  it.each(formatSnapshotFixtures.map((fixture) => [fixture.name, fixture] as const))("%s", (_name, fixture) => {
+    expect(validateSnapshot(fixture.value, versionStory, now).ok).toBe(fixture.valid)
+  })
+
+  it("says which format a refused value is outside of", () => {
+    const refused = validateSnapshot({ ...formatSnapshotFixtures[0].value, rows: [{ dims: { component: "nova", version: "0.1.38-beta", state: "enabled" }, components: 1 }] }, versionStory, now)
+    expect(refused).toEqual({ ok: false, message: 'Row 0 has a value outside the "version" release-version format.' })
   })
 })
 

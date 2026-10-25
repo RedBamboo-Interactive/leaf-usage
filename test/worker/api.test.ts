@@ -529,6 +529,33 @@ describe("admin", () => {
     ])
   })
 
+  it("activates a story with a release-version format dimension and validates uploads against it", async () => {
+    const story = await activeStory({
+      backfillDays: 0,
+      dimensions: [
+        { key: "component", values: ["redleaf", "nova", "other"] },
+        { key: "version", format: "release-version" },
+        { key: "state", values: ["enabled", "disabled"] },
+      ],
+      measures: [{ key: "components", type: "count", max: 500 }],
+    })
+    const stored = await (await admin("GET", `/v1/admin/stories/${story.storyId}/history`)).json() as { current: { definition: { dimensions: unknown[] } } }
+    expect(stored.current.definition.dimensions[1]).toEqual({ key: "version", format: "release-version" })
+
+    const subject = await registeredSubject()
+    const [accepted] = await upload(subject, [snapshot(story, day(1), [
+      { dims: { component: "redleaf", version: "0.1.37", state: "enabled" }, components: 1 },
+      { dims: { component: "other", version: "unreleased", state: "disabled" }, components: 2 },
+    ])])
+    expect(accepted.status).toBe("accepted")
+
+    const other = await registeredSubject()
+    const [refused] = await upload(other, [snapshot(story, day(1), [
+      { dims: { component: "nova", version: "0.1.38-beta.1", state: "enabled" }, components: 1 },
+    ])])
+    expect(refused).toMatchObject({ status: "invalid", message: 'Row 0 has a value outside the "version" release-version format.' })
+  })
+
   it("keeps every previous definition, newest first", async () => {
     const story = await activeStory()
     const path = `/v1/admin/stories/${story.storyId}/1`

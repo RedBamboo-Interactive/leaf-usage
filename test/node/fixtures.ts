@@ -22,6 +22,8 @@ const raw = JSON.parse(readFileSync(fileURLToPath(new URL("../fixtures/conforman
   referenceStory: Record<string, unknown>
   stories: RawFixture[]
   snapshots: RawFixture[]
+  formatStory: Record<string, unknown>
+  formatSnapshots: RawFixture[]
 }
 
 /** Expands `patch`/`omit` fixtures against the first full value in the list. */
@@ -39,3 +41,6 @@ export const now = new Date(raw.now)
 export const referenceStory = raw.referenceStory
 export const storyFixtures = expand(raw.stories)
 export const snapshotFixtures = expand(raw.snapshots)
+/** A story with a release-version format dimension, and snapshots validated against it. */
+export const formatStory = raw.formatStory
+export const formatSnapshotFixtures = expand(raw.formatSnapshots)
