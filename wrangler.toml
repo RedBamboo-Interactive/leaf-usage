@@ -3,6 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-10-24"
 workers_dev = false
 preview_urls = false
+logpush = false
 routes = [
   { pattern = "usage.minititine.cc", custom_domain = true }
 ]
@@ -27,3 +28,9 @@ simple = { limit = 60, period = 60 }
 
 [triggers]
 crons = ["23 3 * * *"]
+
+# No request logs are kept or exported, at any sampling rate: invocation logs can carry request
+# metadata, and the privacy notice promises the address is not stored. `wrangler tail` still works
+# for live debugging and persists nothing.
+[observability]
+enabled = false

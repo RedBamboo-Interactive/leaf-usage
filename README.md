@@ -6,11 +6,23 @@ story: enum (or strictly formatted) dimensions and bounded integers, nothing els
 match an active story version, erases a subject completely on request, and ages data out on a daily
 cron. Laurent's Insights extension reads it through the admin API; there is no other copy.
 
-Design: `redleaf/docs/usage-insights-architecture.md` ("Ingestion Worker") and
-`redleaf/docs/usage-insights-implementation-plan.md` (Phase 1).
+The installation side (the questions, the collector and the consent screen) lives in RedLeaf. In
+Settings > Usage sharing, every question shows the raw JSON it last sent.
 
-No IP address, user agent or `request.cf` data is stored. The client address is used only as the
-key of the Cloudflare rate-limit binding on registration and uploads.
+## What this server keeps about a connection
+
+Nothing. No IP address, user agent or `request.cf` data is stored, and you can check that here:
+
+- `src/index.ts` reads `cf-connecting-ip` in one place, as the key of the rate-limit binding on
+  registration and uploads. The address is not written anywhere.
+- `migrations/` has no column that could hold it.
+- The only log lines are error messages and the daily retention report (`grep console. src`).
+- `wrangler.toml` turns request logs off: `[observability] enabled = false` and `logpush = false`.
+
+What this repository cannot show: Cloudflare runs this Worker, so it necessarily sees the address when
+an installation connects, and what it does with that is covered by its own terms. Reading the source also
+tells you what the code says, not which version is deployed. The live version is recorded by Cloudflare,
+not by this repository.
 
 ## Routes
 
